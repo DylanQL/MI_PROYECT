@@ -2,6 +2,18 @@ const { pool } = require('../models/db');
 const registrationModel = require('../models/registrationModel');
 
 async function ensureUsersSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(255) NULL,
+      username VARCHAR(100) NOT NULL UNIQUE,
+      nombres VARCHAR(120) NULL,
+      apellidos VARCHAR(120) NULL,
+      password VARCHAR(255) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   const [rows] = await pool.query('SHOW COLUMNS FROM users');
   const columns = new Set(rows.map((row) => row.Field));
 
