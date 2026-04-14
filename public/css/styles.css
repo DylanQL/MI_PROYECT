@@ -54,6 +54,33 @@ h4 {
   animation: riseIn 0.5s ease;
 }
 
+.register-card {
+  width: min(560px, 100%);
+}
+
+.register-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.tiny {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.hidden {
+  display: none;
+}
+
+.back-link {
+  margin-top: 8px;
+}
+
 .auth-brand {
   text-align: center;
   margin-bottom: 18px;
@@ -373,6 +400,10 @@ thead {
 }
 
 @media (max-width: 640px) {
+  .register-actions-grid {
+    grid-template-columns: 1fr;
+  }
+
   .column-row,
   .filter-row {
     grid-template-columns: 1fr;

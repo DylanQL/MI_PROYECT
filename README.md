@@ -5,6 +5,7 @@ Aplicacion MVC con Node.js, Express, MySQL y WebSocket para gestionar tablas y r
 ## Funciones incluidas
 
 - Login (sin registro publico)
+- Registro por correo corporativo con codigo de verificacion
 - Edicion de perfil: username, nombres, apellidos y contrasena
 - Menu principal con:
   - Seleccionar tabla
@@ -40,6 +41,9 @@ Variables:
 - `MYSQL_ADDON_PASSWORD`
 - `SESSION_SECRET`
 - `PORT`
+- `GMAIL_SENDER_EMAIL`
+- `GMAIL_APP_PASSWORD`
+- `REGISTER_ALLOWED_DOMAIN`
 
 ## Instalacion y ejecucion
 
@@ -61,6 +65,7 @@ Si aun no tienes la tabla de usuarios:
 ```sql
 CREATE TABLE users (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(255) UNIQUE,
   username VARCHAR(100) NOT NULL UNIQUE,
   nombres VARCHAR(120) NULL,
   apellidos VARCHAR(120) NULL,
@@ -78,10 +83,27 @@ node -e "require('bcrypt').hash('TuPasswordSegura', 10).then(console.log)"
 
 Luego inserta el hash en tu tabla `users`.
 
+## Registro por correo
+
+Flujo implementado:
+
+1. El usuario abre `/register` e ingresa su correo.
+2. Solo se permite continuar si el dominio coincide con `REGISTER_ALLOWED_DOMAIN` (por defecto `scania.com`).
+3. Al pasar a la siguiente pantalla se muestran dos botones:
+  - Enviar codigo
+  - Ya tengo un codigo
+4. El codigo expira en 5 minutos.
+5. No se puede reenviar codigo antes de 1 minuto (se muestra contador y boton desactivado).
+6. Al verificar codigo valido, el sistema genera una contrasena aleatoria, crea o actualiza usuario y envia la contrasena al correo.
+
 ## Rutas principales
 
 - `GET /login`
 - `POST /login`
+- `GET /register`
+- `POST /register/status`
+- `POST /register/send-code`
+- `POST /register/verify-code`
 - `POST /logout`
 - `GET /` (dashboard)
 - `GET /profile`

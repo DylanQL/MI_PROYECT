@@ -14,6 +14,7 @@ function mapUser(row) {
   return {
     id: row.id,
     username: row.username,
+    email: row.email ?? '',
     firstName: row.nombres ?? row.first_name ?? row.nombre ?? '',
     lastName: row.apellidos ?? row.last_name ?? row.apellido ?? '',
     passwordHash: row.password_hash ?? row.password ?? ''
@@ -28,6 +29,12 @@ async function findByUsername(username) {
 
 async function findById(id) {
   const [rows] = await pool.query('SELECT * FROM users WHERE id = ? LIMIT 1', [id]);
+  if (!rows.length) return null;
+  return mapUser(rows[0]);
+}
+
+async function findByEmail(email) {
+  const [rows] = await pool.query('SELECT * FROM users WHERE email = ? LIMIT 1', [email]);
   if (!rows.length) return null;
   return mapUser(rows[0]);
 }
@@ -81,8 +88,33 @@ async function updateProfile({ id, username, firstName, lastName, passwordHash }
   await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
 }
 
+async function createOrUpdateFromRegistration({ email, username, passwordHash }) {
+  const existing = await findByEmail(email);
+
+  if (existing) {
+    await pool.query(
+      `UPDATE users
+       SET username = ?, password = ?
+       WHERE id = ?`,
+      [username, passwordHash, existing.id]
+    );
+
+    return { id: existing.id, isNew: false };
+  }
+
+  const [result] = await pool.query(
+    `INSERT INTO users (email, username, password)
+     VALUES (?, ?, ?)`,
+    [email, username, passwordHash]
+  );
+
+  return { id: result.insertId, isNew: true };
+}
+
 module.exports = {
   findByUsername,
   findById,
-  updateProfile
+  findByEmail,
+  updateProfile,
+  createOrUpdateFromRegistration
 };

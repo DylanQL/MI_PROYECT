@@ -9,6 +9,7 @@ const path = require('path');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const { sessionStore, pool } = require('./models/db');
+const { ensureRegistrationSetup } = require('./services/bootstrap');
 const authRoutes = require('./routes/authRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const viewRoutes = require('./routes/viewRoutes');
@@ -102,6 +103,7 @@ wss.on('connection', (ws) => {
 async function start() {
   try {
     await pool.query('SELECT 1');
+    await ensureRegistrationSetup();
     const port = Number(process.env.PORT || 3000);
 
     server.listen(port, () => {

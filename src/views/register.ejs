@@ -1,0 +1,64 @@
+<%- include('partials/head', { title: 'Registro | DataPilot MVC' }) %>
+
+<main class="auth-shell">
+  <section class="auth-card glass register-card">
+    <div class="auth-brand">
+      <i class="bi bi-envelope-check"></i>
+      <h1>Registro por correo</h1>
+      <p>Solo se permite el dominio <strong>@<%= allowedDomain %></strong></p>
+    </div>
+
+    <% if (error) { %>
+      <div class="alert error"><i class="bi bi-exclamation-octagon"></i> <%= error %></div>
+    <% } %>
+
+    <form id="registerEmailForm" class="auth-form">
+      <label>
+        Correo corporativo
+        <input type="email" id="registerEmail" placeholder="usuario@<%= allowedDomain %>" required />
+      </label>
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-arrow-right-circle"></i>
+        Siguiente
+      </button>
+    </form>
+
+    <section id="registerActions" class="auth-form hidden">
+      <div class="register-actions-grid">
+        <button id="sendCodeBtn" class="btn btn-primary" type="button">
+          <i class="bi bi-send"></i>
+          Enviar codigo
+        </button>
+        <button id="haveCodeBtn" class="btn btn-ghost" type="button">
+          <i class="bi bi-key"></i>
+          Ya tengo un codigo
+        </button>
+      </div>
+      <p id="cooldownInfo" class="tiny muted"></p>
+    </section>
+
+    <form id="verifyCodeForm" class="auth-form hidden">
+      <label>
+        Codigo de verificacion
+        <input type="text" id="verificationCode" maxlength="6" placeholder="123456" required />
+      </label>
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-check2-circle"></i>
+        Verificar codigo
+      </button>
+    </form>
+
+    <div id="registerMessage"></div>
+
+    <a href="/login" class="btn btn-ghost back-link"><i class="bi bi-arrow-left"></i> Volver al login</a>
+  </section>
+</main>
+
+<script>
+  window.__REGISTER_DATA__ = {
+    allowedDomain: <%- JSON.stringify(allowedDomain) %>
+  };
+</script>
+<script src="/js/register.js"></script>
+
+<%- include('partials/footer') %>
