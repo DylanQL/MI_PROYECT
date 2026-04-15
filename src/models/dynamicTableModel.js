@@ -12,6 +12,8 @@ const ALLOWED_TYPES = new Set([
   'BOOLEAN'
 ]);
 
+const ALLOWED_FK_RULES = new Set(['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION']);
+
 async function listTables() {
   const [rows] = await pool.query('SHOW TABLES');
   const key = Object.keys(rows[0] || {})[0];
@@ -184,6 +186,107 @@ async function addRecord(tableName, payload) {
   return result.insertId;
 }
 
+function normalizeForeignKeyRule(value, fallback) {
+  const normalized = String(value || fallback || 'RESTRICT').toUpperCase().trim();
+  if (!ALLOWED_FK_RULES.has(normalized)) {
+    throw new Error(`Regla de llave foranea invalida: ${value}`);
+  }
+  return normalized;
+}
+
+function buildForeignKeyName({ tableName, columnName, referencedTable, referencedColumn }) {
+  const base = `fk_${tableName}_${columnName}_${referencedTable}_${referencedColumn}`;
+  return base.slice(0, 64);
+}
+
+async function getForeignKeys(tableName) {
+  assertTableAllowed(tableName);
+
+  const [rows] = await pool.query(
+    `SELECT
+      kcu.CONSTRAINT_NAME AS constraintName,
+      kcu.COLUMN_NAME AS columnName,
+      kcu.REFERENCED_TABLE_NAME AS referencedTable,
+      kcu.REFERENCED_COLUMN_NAME AS referencedColumn,
+      rc.UPDATE_RULE AS updateRule,
+      rc.DELETE_RULE AS deleteRule
+     FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+     INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+       ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+      AND rc.TABLE_NAME = kcu.TABLE_NAME
+      AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+     WHERE kcu.TABLE_SCHEMA = DATABASE()
+       AND kcu.TABLE_NAME = ?
+       AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
+     ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION`,
+    [tableName]
+  );
+
+  return rows;
+}
+
+async function addForeignKey(tableName, payload) {
+  assertTableAllowed(tableName);
+
+  const columnName = String(payload?.columnName || '').trim();
+  const referencedTable = String(payload?.referencedTable || '').trim();
+  const referencedColumn = String(payload?.referencedColumn || '').trim();
+
+  if (!isValidIdentifier(columnName)) {
+    throw new Error('Columna origen invalida para la llave foranea.');
+  }
+  assertTableAllowed(referencedTable);
+  if (!isValidIdentifier(referencedColumn)) {
+    throw new Error('Columna destino invalida para la llave foranea.');
+  }
+
+  const onDelete = normalizeForeignKeyRule(payload?.onDelete, 'RESTRICT');
+  const onUpdate = normalizeForeignKeyRule(payload?.onUpdate, 'CASCADE');
+
+  const constraintNameRaw = String(payload?.constraintName || '').trim();
+  const constraintName = constraintNameRaw || buildForeignKeyName({
+    tableName,
+    columnName,
+    referencedTable,
+    referencedColumn
+  });
+
+  if (!isValidIdentifier(constraintName)) {
+    throw new Error('Nombre de constraint invalido para la llave foranea.');
+  }
+
+  const safeTable = quoteIdentifier(tableName);
+  const safeConstraint = quoteIdentifier(constraintName);
+  const safeColumn = quoteIdentifier(columnName);
+  const safeReferencedTable = quoteIdentifier(referencedTable);
+  const safeReferencedColumn = quoteIdentifier(referencedColumn);
+
+  await pool.query(
+    `ALTER TABLE ${safeTable}
+     ADD CONSTRAINT ${safeConstraint}
+     FOREIGN KEY (${safeColumn})
+     REFERENCES ${safeReferencedTable} (${safeReferencedColumn})
+     ON DELETE ${onDelete}
+     ON UPDATE ${onUpdate}`
+  );
+
+  return constraintName;
+}
+
+async function dropForeignKey(tableName, constraintName) {
+  assertTableAllowed(tableName);
+
+  const safeConstraintName = String(constraintName || '').trim();
+  if (!isValidIdentifier(safeConstraintName)) {
+    throw new Error('Nombre de constraint invalido.');
+  }
+
+  const safeTable = quoteIdentifier(tableName);
+  const safeConstraint = quoteIdentifier(safeConstraintName);
+
+  await pool.query(`ALTER TABLE ${safeTable} DROP FOREIGN KEY ${safeConstraint}`);
+}
+
 async function deleteRecord(tableName, id) {
   assertTableAllowed(tableName);
 
@@ -210,6 +313,9 @@ module.exports = {
   dropColumn,
   getRecords,
   addRecord,
+  getForeignKeys,
+  addForeignKey,
+  dropForeignKey,
   deleteRecord,
   ALLOWED_TYPES: Array.from(ALLOWED_TYPES)
 };

@@ -15,6 +15,17 @@ const recordTableSelect = document.getElementById('recordTableSelect');
 const recordsTable = document.getElementById('recordsTable');
 const pageInfo = document.getElementById('pageInfo');
 const filtersContainer = document.getElementById('filtersContainer');
+const fkForm = document.getElementById('fkForm');
+const fkDeleteForm = document.getElementById('fkDeleteForm');
+const fkTableSelect = document.getElementById('fkTableSelect');
+const fkColumnSelect = document.getElementById('fkColumnSelect');
+const fkRefTableSelect = document.getElementById('fkRefTableSelect');
+const fkRefColumnSelect = document.getElementById('fkRefColumnSelect');
+const fkDeleteTableSelect = document.getElementById('fkDeleteTableSelect');
+const fkConstraintSelect = document.getElementById('fkConstraintSelect');
+const fkOnDelete = document.getElementById('fkOnDelete');
+const fkOnUpdate = document.getElementById('fkOnUpdate');
+const fkList = document.getElementById('fkList');
 const toast = document.getElementById('toast');
 const deleteModal = document.getElementById('deleteModal');
 const deleteModalText = document.getElementById('deleteModalText');
@@ -29,9 +40,9 @@ function showToast(message, type = 'success') {
   }, 2500);
 }
 
-function openDeleteModal(tableName) {
+function openDeleteModal(targetName, targetType = 'tabla') {
   return new Promise((resolve) => {
-    deleteModalText.textContent = `Se eliminara la tabla ${tableName}. Esta accion no se puede deshacer.`;
+    deleteModalText.textContent = `Se eliminara ${targetType} ${targetName}. Esta accion no se puede deshacer.`;
     deleteModal.classList.add('open');
     deleteModal.setAttribute('aria-hidden', 'false');
 
@@ -87,6 +98,9 @@ function renderTableOptions() {
   editTableSelect.innerHTML = optionsHtml;
   deleteTableSelect.innerHTML = optionsHtml;
   recordTableSelect.innerHTML = optionsHtml;
+  if (fkTableSelect) fkTableSelect.innerHTML = optionsHtml;
+  if (fkRefTableSelect) fkRefTableSelect.innerHTML = optionsHtml;
+  if (fkDeleteTableSelect) fkDeleteTableSelect.innerHTML = optionsHtml;
 
   if (state.tables.length && !state.currentTable) {
     state.currentTable = state.tables[0];
@@ -221,7 +235,7 @@ async function handleDeleteRecordClick(event) {
   const recordId = Number(button.dataset.id);
   if (!state.currentTable || !Number.isInteger(recordId)) return;
 
-  const ok = await openDeleteModal(`registro #${recordId} de ${state.currentTable}`);
+  const ok = await openDeleteModal(`#${recordId} de ${state.currentTable}`, 'el registro');
   if (!ok) return;
 
   try {
@@ -347,7 +361,7 @@ function setupDeleteTable() {
     const tableName = form.tableName.value;
     if (!tableName) return;
 
-    const ok = await openDeleteModal(tableName);
+    const ok = await openDeleteModal(tableName, 'la tabla');
     if (!ok) return;
 
     try {
@@ -382,6 +396,162 @@ async function loadRecordFields() {
   } catch (error) {
     showToast(error.message, 'error');
   }
+}
+
+function setSelectOptions(selectEl, values, emptyText) {
+  if (!selectEl) return;
+
+  if (!values.length) {
+    selectEl.innerHTML = `<option value="">${emptyText}</option>`;
+    return;
+  }
+
+  selectEl.innerHTML = values.map((value) => `<option value="${value}">${value}</option>`).join('');
+}
+
+async function loadColumnsIntoSelect(tableName, selectEl, { includeId = true } = {}) {
+  if (!selectEl) return;
+
+  if (!tableName) {
+    setSelectOptions(selectEl, [], 'Selecciona una tabla');
+    return;
+  }
+
+  try {
+    const data = await request(`/api/tables/${encodeURIComponent(tableName)}/columns`);
+    const columns = (data.columns || [])
+      .map((column) => column.Field)
+      .filter((column) => includeId || column !== 'id');
+
+    setSelectOptions(selectEl, columns, 'No hay columnas disponibles');
+  } catch (error) {
+    setSelectOptions(selectEl, [], 'No se pudieron cargar columnas');
+    showToast(error.message, 'error');
+  }
+}
+
+async function loadForeignKeysForTable(tableName) {
+  if (!fkConstraintSelect || !fkList) return;
+
+  if (!tableName) {
+    setSelectOptions(fkConstraintSelect, [], 'Selecciona una tabla');
+    fkList.innerHTML = '<li>Selecciona una tabla para ver sus relaciones.</li>';
+    return;
+  }
+
+  try {
+    const data = await request(`/api/tables/${encodeURIComponent(tableName)}/foreign-keys`);
+    const foreignKeys = data.foreignKeys || [];
+    const uniqueConstraints = Array.from(new Set(foreignKeys.map((item) => item.constraintName)));
+
+    setSelectOptions(fkConstraintSelect, uniqueConstraints, 'No hay constraints FK');
+
+    if (!foreignKeys.length) {
+      fkList.innerHTML = '<li>Esta tabla no tiene llaves foraneas.</li>';
+      return;
+    }
+
+    fkList.innerHTML = foreignKeys
+      .map(
+        (item) =>
+          `<li><strong>${item.constraintName}</strong>: ${item.columnName} -> ${item.referencedTable}.${item.referencedColumn} (ON DELETE ${item.deleteRule}, ON UPDATE ${item.updateRule})</li>`
+      )
+      .join('');
+  } catch (error) {
+    setSelectOptions(fkConstraintSelect, [], 'No se pudo cargar');
+    fkList.innerHTML = '<li>No se pudieron cargar las relaciones.</li>';
+    showToast(error.message, 'error');
+  }
+}
+
+async function refreshForeignKeyPanel() {
+  if (!fkForm || !fkDeleteForm || !fkTableSelect || !fkRefTableSelect || !fkDeleteTableSelect) return;
+
+  if (!state.tables.length) {
+    setSelectOptions(fkColumnSelect, [], 'No hay columnas disponibles');
+    setSelectOptions(fkRefColumnSelect, [], 'No hay columnas disponibles');
+    setSelectOptions(fkConstraintSelect, [], 'No hay constraints FK');
+    if (fkList) fkList.innerHTML = '<li>No hay tablas para vincular.</li>';
+    return;
+  }
+
+  if (!fkTableSelect.value) fkTableSelect.value = state.currentTable || state.tables[0];
+  if (!fkDeleteTableSelect.value) fkDeleteTableSelect.value = fkTableSelect.value;
+  if (!fkRefTableSelect.value) fkRefTableSelect.value = state.tables.find((table) => table !== fkTableSelect.value) || fkTableSelect.value;
+
+  await loadColumnsIntoSelect(fkTableSelect.value, fkColumnSelect, { includeId: true });
+  await loadColumnsIntoSelect(fkRefTableSelect.value, fkRefColumnSelect, { includeId: true });
+  await loadForeignKeysForTable(fkDeleteTableSelect.value);
+}
+
+function setupForeignKeys() {
+  if (!fkForm || !fkDeleteForm) return;
+
+  fkOnDelete.value = 'RESTRICT';
+  fkOnUpdate.value = 'CASCADE';
+
+  fkTableSelect.addEventListener('change', async () => {
+    await loadColumnsIntoSelect(fkTableSelect.value, fkColumnSelect, { includeId: true });
+  });
+
+  fkRefTableSelect.addEventListener('change', async () => {
+    await loadColumnsIntoSelect(fkRefTableSelect.value, fkRefColumnSelect, { includeId: true });
+  });
+
+  fkDeleteTableSelect.addEventListener('change', async () => {
+    await loadForeignKeysForTable(fkDeleteTableSelect.value);
+  });
+
+  fkForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const tableName = fkTableSelect.value;
+    const payload = {
+      columnName: fkColumnSelect.value,
+      referencedTable: fkRefTableSelect.value,
+      referencedColumn: fkRefColumnSelect.value,
+      onDelete: fkOnDelete.value,
+      onUpdate: fkOnUpdate.value
+    };
+
+    try {
+      await request(`/api/tables/${encodeURIComponent(tableName)}/foreign-keys`, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      showToast('Llave foranea creada correctamente.');
+
+      fkDeleteTableSelect.value = tableName;
+      await loadForeignKeysForTable(tableName);
+      await loadRecords();
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  });
+
+  fkDeleteForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const tableName = fkDeleteTableSelect.value;
+    const constraintName = fkConstraintSelect.value;
+    if (!tableName || !constraintName) return;
+
+    const ok = await openDeleteModal(`${constraintName} en ${tableName}`, 'la llave foranea');
+    if (!ok) return;
+
+    try {
+      await request(`/api/tables/${encodeURIComponent(tableName)}/foreign-keys/${encodeURIComponent(constraintName)}`, {
+        method: 'DELETE'
+      });
+
+      showToast('Llave foranea eliminada correctamente.');
+      await loadForeignKeysForTable(tableName);
+      await loadRecords();
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  });
 }
 
 function setupAddRecord() {
@@ -473,6 +643,8 @@ async function refreshTables() {
   editTableSelect.value = state.currentTable;
   deleteTableSelect.value = state.currentTable;
   recordTableSelect.value = state.currentTable;
+
+  await refreshForeignKeyPanel();
 }
 
 function initWebSocket() {
@@ -484,7 +656,7 @@ function initWebSocket() {
 
     if (!message?.type) return;
 
-    if (['table_created', 'table_edited', 'table_deleted', 'record_added', 'record_deleted'].includes(message.type)) {
+    if (['table_created', 'table_edited', 'table_deleted', 'record_added', 'record_deleted', 'fk_created', 'fk_deleted'].includes(message.type)) {
       await refreshTables();
       await loadRecordFields();
       await loadRecords();
@@ -501,6 +673,7 @@ async function init() {
   setupEditTable();
   setupDeleteTable();
   setupAddRecord();
+  setupForeignKeys();
 
   await refreshTables();
   await loadRecordFields();

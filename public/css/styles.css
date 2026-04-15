@@ -555,6 +555,37 @@ thead {
   flex-wrap: wrap;
 }
 
+.fk-layout {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.fk-card {
+  border: 1px solid #dce6d8;
+  border-radius: 12px;
+  background: #f9fcf8;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.fk-card h4 {
+  font-size: 1rem;
+}
+
+.fk-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.fk-list li {
+  color: var(--muted);
+}
+
 @keyframes riseIn {
   from {
     opacity: 0;
@@ -611,6 +642,10 @@ thead {
 
   .column-row,
   .filter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .fk-layout {
     grid-template-columns: 1fr;
   }
 

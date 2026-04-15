@@ -19,6 +19,7 @@
       <button class="menu-item" data-section="editTable"><i class="bi bi-pencil-square"></i> Editar tabla</button>
       <button class="menu-item" data-section="deleteTable"><i class="bi bi-trash3"></i> Borrar tabla</button>
       <button class="menu-item" data-section="addRecord"><i class="bi bi-node-plus"></i> Anadir registro</button>
+      <button class="menu-item" data-section="foreignKeys"><i class="bi bi-link-45deg"></i> Vincular tablas (FK)</button>
     </div>
   </aside>
 
@@ -114,6 +115,72 @@
         <div id="recordFields"></div>
         <button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle"></i> Guardar registro</button>
       </form>
+    </article>
+
+    <article id="foreignKeys" class="panel section-panel">
+      <h3><i class="bi bi-link-45deg"></i> Vincular tablas con llave foranea</h3>
+      <p class="muted tiny">Crea relaciones entre tablas para mantener integridad referencial y evitar datos huerfanos.</p>
+
+      <div class="fk-layout">
+        <section class="fk-card">
+          <h4>Crear relacion</h4>
+          <form id="fkForm" class="grid-form">
+            <label>
+              Tabla origen
+              <select id="fkTableSelect" name="tableName" required></select>
+            </label>
+            <label>
+              Columna origen
+              <select id="fkColumnSelect" name="columnName" required></select>
+            </label>
+            <label>
+              Tabla destino
+              <select id="fkRefTableSelect" name="referencedTable" required></select>
+            </label>
+            <label>
+              Columna destino
+              <select id="fkRefColumnSelect" name="referencedColumn" required></select>
+            </label>
+            <label>
+              Regla al eliminar
+              <select id="fkOnDelete" name="onDelete">
+                <option value="RESTRICT">RESTRICT</option>
+                <option value="CASCADE">CASCADE</option>
+                <option value="SET NULL">SET NULL</option>
+                <option value="NO ACTION">NO ACTION</option>
+              </select>
+            </label>
+            <label>
+              Regla al actualizar
+              <select id="fkOnUpdate" name="onUpdate">
+                <option value="CASCADE">CASCADE</option>
+                <option value="RESTRICT">RESTRICT</option>
+                <option value="SET NULL">SET NULL</option>
+                <option value="NO ACTION">NO ACTION</option>
+              </select>
+            </label>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-link"></i> Crear FK</button>
+          </form>
+        </section>
+
+        <section class="fk-card">
+          <h4>Eliminar relacion</h4>
+          <form id="fkDeleteForm" class="grid-form">
+            <label>
+              Tabla origen
+              <select id="fkDeleteTableSelect" name="tableName" required></select>
+            </label>
+            <label>
+              Constraint FK
+              <select id="fkConstraintSelect" name="constraintName" required></select>
+            </label>
+            <button type="submit" class="btn btn-danger"><i class="bi bi-unlink"></i> Eliminar FK</button>
+          </form>
+
+          <h4>Relaciones actuales</h4>
+          <ul id="fkList" class="fk-list"></ul>
+        </section>
+      </div>
     </article>
   </section>
 </main>

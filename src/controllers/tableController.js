@@ -104,6 +104,42 @@ async function deleteRecord(req, res) {
   }
 }
 
+async function getForeignKeys(req, res) {
+  try {
+    const { tableName } = req.params;
+    const foreignKeys = await tableModel.getForeignKeys(tableName);
+    return res.json({ foreignKeys });
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+}
+
+async function addForeignKey(req, res) {
+  try {
+    const { tableName } = req.params;
+    const constraintName = await tableModel.addForeignKey(tableName, req.body || {});
+
+    withWsEvent(req, 'fk_created', { tableName, constraintName });
+
+    return res.status(201).json({ message: 'Llave foranea creada correctamente.', constraintName });
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+}
+
+async function deleteForeignKey(req, res) {
+  try {
+    const { tableName, constraintName } = req.params;
+    await tableModel.dropForeignKey(tableName, constraintName);
+
+    withWsEvent(req, 'fk_deleted', { tableName, constraintName });
+
+    return res.json({ message: 'Llave foranea eliminada correctamente.' });
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+}
+
 async function getTableColumns(req, res) {
   try {
     const { tableName } = req.params;
@@ -122,5 +158,8 @@ module.exports = {
   getRecords,
   addRecord,
   deleteRecord,
+  getForeignKeys,
+  addForeignKey,
+  deleteForeignKey,
   getTableColumns
 };
