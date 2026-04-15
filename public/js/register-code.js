@@ -114,8 +114,8 @@ async function loadStatus() {
   startCooldown(data.cooldownRemainingSeconds || 0);
 }
 
-sendCodeBtn.addEventListener('click', async () => {
-  if (state.isSending || state.cooldownSeconds > 0) return;
+async function sendCode() {
+  if (state.isSending || state.cooldownSeconds > 0 || !state.email) return;
 
   try {
     state.isSending = true;
@@ -135,6 +135,10 @@ sendCodeBtn.addEventListener('click', async () => {
     }
     showMessage(error.message, 'error');
   }
+}
+
+sendCodeBtn.addEventListener('click', async () => {
+  await sendCode();
 });
 
 verifyCodeForm.addEventListener('submit', async (event) => {
@@ -168,4 +172,20 @@ verifyCodeForm.addEventListener('submit', async (event) => {
 });
 
 bindOtpInputs();
-loadStatus().catch((error) => showMessage(error.message, 'error'));
+
+async function initVerificationFlow() {
+  try {
+    await loadStatus();
+
+    if (state.cooldownSeconds > 0) {
+      registerStatus.textContent = `Ya enviamos un codigo. Podras reenviar en ${state.cooldownSeconds}s.`;
+      return;
+    }
+
+    await sendCode();
+  } catch (error) {
+    showMessage(error.message, 'error');
+  }
+}
+
+initVerificationFlow();
