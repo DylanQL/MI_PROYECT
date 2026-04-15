@@ -32,7 +32,10 @@
 
       <div class="filters-head">
         <h4>Filtros ilimitados</h4>
-        <button id="addFilterBtn" class="btn btn-ghost"><i class="bi bi-funnel"></i> Agregar filtro</button>
+        <div class="toolbar-actions">
+          <button id="addFilterBtn" class="btn btn-ghost"><i class="bi bi-funnel"></i> Agregar filtro</button>
+          <button id="clearFiltersBtn" class="btn btn-ghost"><i class="bi bi-x-circle"></i> Limpiar filtros</button>
+        </div>
       </div>
       <div id="filtersContainer" class="filters"></div>
 
@@ -41,9 +44,19 @@
       </div>
 
       <div class="pagination">
+        <label class="page-size-control">
+          Registros por pagina
+          <select id="pageSizeSelect">
+            <option value="10">10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </label>
         <button id="prevPage" class="btn btn-ghost"><i class="bi bi-arrow-left"></i> Anterior</button>
         <span id="pageInfo">Pagina 1</span>
         <button id="nextPage" class="btn btn-ghost">Siguiente <i class="bi bi-arrow-right"></i></button>
+        <button id="reloadRecordsBtn" class="btn btn-ghost"><i class="bi bi-arrow-clockwise"></i> Recargar</button>
       </div>
     </article>
 

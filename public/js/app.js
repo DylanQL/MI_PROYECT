@@ -15,6 +15,12 @@ const recordTableSelect = document.getElementById('recordTableSelect');
 const recordsTable = document.getElementById('recordsTable');
 const pageInfo = document.getElementById('pageInfo');
 const filtersContainer = document.getElementById('filtersContainer');
+const addFilterBtn = document.getElementById('addFilterBtn');
+const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+const prevPageBtn = document.getElementById('prevPage');
+const nextPageBtn = document.getElementById('nextPage');
+const reloadRecordsBtn = document.getElementById('reloadRecordsBtn');
+const pageSizeSelect = document.getElementById('pageSizeSelect');
 const fkForm = document.getElementById('fkForm');
 const fkDeleteForm = document.getElementById('fkDeleteForm');
 const fkTableSelect = document.getElementById('fkTableSelect');
@@ -38,6 +44,16 @@ function showToast(message, type = 'success') {
   setTimeout(() => {
     toast.className = '';
   }, 2500);
+}
+
+function debounce(fn, wait = 300) {
+  let timerId = null;
+  return (...args) => {
+    if (timerId) clearTimeout(timerId);
+    timerId = setTimeout(() => {
+      fn(...args);
+    }, wait);
+  };
 }
 
 function openDeleteModal(targetName, targetType = 'tabla') {
@@ -147,10 +163,12 @@ function addFilterRow(field = '', value = '') {
     loadRecords();
   });
 
-  row.querySelector('.filter-value').addEventListener('input', () => {
+  const debouncedLoad = debounce(() => {
     state.currentPage = 1;
     loadRecords();
-  });
+  }, 250);
+
+  row.querySelector('.filter-value').addEventListener('input', debouncedLoad);
 
   row.querySelector('.filter-field').addEventListener('change', () => {
     state.currentPage = 1;
@@ -176,13 +194,21 @@ function getFiltersFromUi() {
   return filters;
 }
 
+function updatePaginationControls() {
+  prevPageBtn.disabled = state.currentPage <= 1 || !state.currentTable;
+  nextPageBtn.disabled = state.currentPage >= state.totalPages || !state.currentTable;
+}
+
 async function loadRecords() {
   if (!state.currentTable) {
     recordsTable.innerHTML = '<tr><td>No hay tabla seleccionada.</td></tr>';
+    pageInfo.textContent = 'Sin datos para mostrar';
+    updatePaginationControls();
     return;
   }
 
   try {
+    recordsTable.innerHTML = '<tr><td>Cargando registros...</td></tr>';
     const filters = getFiltersFromUi();
     const params = new URLSearchParams({
       page: String(state.currentPage),
@@ -198,9 +224,18 @@ async function loadRecords() {
     state.totalPages = data.pagination.totalPages;
     state.currentColumns = data.columns || [];
 
+    if (state.currentPage > state.totalPages) {
+      state.currentPage = state.totalPages;
+      await loadRecords();
+      return;
+    }
+
     renderRecordsTable(data.columns, data.data);
     pageInfo.textContent = `Pagina ${data.pagination.page} de ${data.pagination.totalPages} (Total: ${data.pagination.total})`;
+    updatePaginationControls();
   } catch (error) {
+    recordsTable.innerHTML = '<tr><td>No se pudieron cargar los registros.</td></tr>';
+    updatePaginationControls();
     showToast(error.message, 'error');
   }
 }
@@ -389,8 +424,28 @@ async function loadRecordFields() {
     data.columns
       .filter((column) => column.Field !== 'id')
       .forEach((column) => {
+        const sqlType = String(column.Type || '').toLowerCase();
         const label = document.createElement('label');
-        label.innerHTML = `${column.Field}<input type="text" name="${column.Field}" placeholder="${column.Type}" />`;
+
+        let inputHtml = `<input type="text" name="${column.Field}" placeholder="${column.Type}" data-sql-type="text" />`;
+
+        if (sqlType.includes('int') || sqlType.includes('decimal') || sqlType.includes('float') || sqlType.includes('double')) {
+          inputHtml = `<input type="number" name="${column.Field}" placeholder="${column.Type}" data-sql-type="number" />`;
+        } else if (sqlType === 'date') {
+          inputHtml = `<input type="date" name="${column.Field}" data-sql-type="date" />`;
+        } else if (sqlType.includes('datetime') || sqlType.includes('timestamp')) {
+          inputHtml = `<input type="datetime-local" name="${column.Field}" data-sql-type="datetime" />`;
+        } else if (sqlType === 'tinyint(1)' || sqlType.includes('boolean') || sqlType.includes('bool')) {
+          inputHtml = `
+            <select name="${column.Field}" data-sql-type="boolean">
+              <option value="">Selecciona</option>
+              <option value="1">True</option>
+              <option value="0">False</option>
+            </select>
+          `;
+        }
+
+        label.innerHTML = `${column.Field}${inputHtml}`;
         fieldsWrap.appendChild(label);
       });
   } catch (error) {
@@ -566,8 +621,31 @@ function setupAddRecord() {
     if (!tableName) return;
 
     const values = {};
-    Array.from(form.querySelectorAll('#recordFields input')).forEach((input) => {
-      values[input.name] = input.value;
+    Array.from(form.querySelectorAll('#recordFields input, #recordFields select')).forEach((input) => {
+      const rawValue = String(input.value || '').trim();
+      const sqlType = input.dataset.sqlType || 'text';
+
+      if (!rawValue) {
+        values[input.name] = null;
+        return;
+      }
+
+      if (sqlType === 'number') {
+        values[input.name] = Number(rawValue);
+        return;
+      }
+
+      if (sqlType === 'boolean') {
+        values[input.name] = rawValue === '1' ? 1 : 0;
+        return;
+      }
+
+      if (sqlType === 'datetime') {
+        values[input.name] = rawValue.replace('T', ' ');
+        return;
+      }
+
+      values[input.name] = rawValue;
     });
 
     try {
@@ -597,12 +675,14 @@ function setupSelectTable() {
 
   tableSelect.addEventListener('change', async () => {
     state.currentTable = tableSelect.value;
+    recordTableSelect.value = state.currentTable;
     state.currentPage = 1;
     filtersContainer.innerHTML = '';
+    await loadRecordFields();
     await loadRecords();
   });
 
-  document.getElementById('addFilterBtn').addEventListener('click', () => {
+  addFilterBtn.addEventListener('click', () => {
     if (!state.currentColumns.length) {
       showToast('Primero carga una tabla para conocer sus campos.', 'error');
       return;
@@ -610,18 +690,36 @@ function setupSelectTable() {
     addFilterRow();
   });
 
-  document.getElementById('prevPage').addEventListener('click', async () => {
+  clearFiltersBtn.addEventListener('click', async () => {
+    filtersContainer.innerHTML = '';
+    state.currentPage = 1;
+    await loadRecords();
+  });
+
+  pageSizeSelect.value = String(state.pageSize);
+  pageSizeSelect.addEventListener('change', async () => {
+    state.pageSize = Number(pageSizeSelect.value) || 10;
+    state.currentPage = 1;
+    await loadRecords();
+  });
+
+  prevPageBtn.addEventListener('click', async () => {
     if (state.currentPage > 1) {
       state.currentPage -= 1;
       await loadRecords();
     }
   });
 
-  document.getElementById('nextPage').addEventListener('click', async () => {
+  nextPageBtn.addEventListener('click', async () => {
     if (state.currentPage < state.totalPages) {
       state.currentPage += 1;
       await loadRecords();
     }
+  });
+
+  reloadRecordsBtn.addEventListener('click', async () => {
+    await loadRecords();
+    showToast('Datos recargados.');
   });
 }
 
@@ -643,6 +741,21 @@ async function refreshTables() {
   editTableSelect.value = state.currentTable;
   deleteTableSelect.value = state.currentTable;
   recordTableSelect.value = state.currentTable;
+
+  const hasTables = Boolean(state.currentTable);
+  addFilterBtn.disabled = !hasTables;
+  clearFiltersBtn.disabled = !hasTables;
+  pageSizeSelect.disabled = !hasTables;
+  reloadRecordsBtn.disabled = !hasTables;
+
+  if (!hasTables) {
+    filtersContainer.innerHTML = '';
+    document.getElementById('recordFields').innerHTML = '';
+    state.currentColumns = [];
+    state.currentPage = 1;
+    state.totalPages = 1;
+    updatePaginationControls();
+  }
 
   await refreshForeignKeyPanel();
 }
