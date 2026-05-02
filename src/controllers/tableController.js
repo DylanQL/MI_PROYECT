@@ -96,9 +96,10 @@ async function deleteTable(req, res) {
 async function getRecords(req, res) {
   try {
     const { tableName } = req.params;
-    const { page = 1, pageSize = 10, ...filters } = req.query;
+    const { page = 1, pageSize = 10, fkDisplay, ...filters } = req.query;
+    const useFkDisplayFilters = fkDisplay === '1' || fkDisplay === 'true';
 
-    const records = await tableModel.getRecords(tableName, page, pageSize, filters);
+    const records = await tableModel.getRecords(tableName, page, pageSize, filters, { useFkDisplayFilters });
 
     return res.json(records);
   } catch (error) {
@@ -111,7 +112,9 @@ async function exportRecords(req, res) {
     const { tableName } = req.params;
     const { fkDisplay, ...filters } = req.query;
     const showFkDisplay = fkDisplay === '1' || fkDisplay === 'true';
-    const records = await tableModel.getRecordsForExport(tableName, filters);
+    const records = await tableModel.getRecordsForExport(tableName, filters, {
+      useFkDisplayFilters: showFkDisplay
+    });
     const csv = buildCsv({
       columns: records.columns,
       rows: records.data,

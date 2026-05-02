@@ -314,7 +314,8 @@ async function loadRecords() {
     recordsTable.innerHTML = '<tr><td>Cargando registros...</td></tr>';
     const params = buildCurrentTableParams({
       page: String(state.currentPage),
-      pageSize: String(state.pageSize)
+      pageSize: String(state.pageSize),
+      fkDisplay: state.showFkDisplay ? '1' : '0'
     });
 
     const data = await request(`/api/tables/${encodeURIComponent(state.currentTable)}/records?${params.toString()}`);

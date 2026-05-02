@@ -159,13 +159,43 @@ async function dropColumn(tableName, columnName) {
   }
 }
 
-function buildFilterQuery(filters, availableColumns) {
+async function buildFilterQuery(tableName, filters, availableColumns, useFkDisplayFilters = false) {
   const conditions = [];
   const values = [];
+  const fkByColumn = new Map();
+
+  if (useFkDisplayFilters) {
+    const foreignKeys = await getForeignKeys(tableName);
+    foreignKeys.forEach((fkMeta) => {
+      if (!fkByColumn.has(fkMeta.columnName)) {
+        fkByColumn.set(fkMeta.columnName, fkMeta);
+      }
+    });
+  }
 
   for (const [field, value] of Object.entries(filters)) {
     if (!value || !value.trim()) continue;
     if (!availableColumns.has(field)) continue;
+
+    const fkMeta = fkByColumn.get(field);
+    if (fkMeta) {
+      const referencedColumns = await getColumns(fkMeta.referencedTable);
+      const availableReferencedColumns = referencedColumns.map((column) => column.Field);
+      const configuredDisplayColumn = await getDisplayColumn(fkMeta.referencedTable);
+      const displayColumn = configuredDisplayColumn && availableReferencedColumns.includes(configuredDisplayColumn)
+        ? configuredDisplayColumn
+        : availableReferencedColumns.find((column) => column !== fkMeta.referencedColumn) || fkMeta.referencedColumn;
+
+      conditions.push(
+        `${quoteIdentifier(field)} IN (
+          SELECT ${quoteIdentifier(fkMeta.referencedColumn)}
+          FROM ${quoteIdentifier(fkMeta.referencedTable)}
+          WHERE ${quoteIdentifier(displayColumn)} LIKE ?
+        )`
+      );
+      values.push(`%${value.trim()}%`);
+      continue;
+    }
 
     conditions.push(`${quoteIdentifier(field)} LIKE ?`);
     values.push(`%${value.trim()}%`);
@@ -177,7 +207,7 @@ function buildFilterQuery(filters, availableColumns) {
   };
 }
 
-async function getRecords(tableName, page = 1, pageSize = 10, filters = {}) {
+async function getRecords(tableName, page = 1, pageSize = 10, filters = {}, options = {}) {
   assertTableAllowed(tableName);
 
   const safePage = Math.max(Number(page) || 1, 1);
@@ -188,7 +218,7 @@ async function getRecords(tableName, page = 1, pageSize = 10, filters = {}) {
   const columns = await getColumns(tableName);
   const availableColumns = new Set(columns.map((column) => column.Field));
 
-  const { whereClause, values } = buildFilterQuery(filters, availableColumns);
+  const { whereClause, values } = await buildFilterQuery(tableName, filters, availableColumns, options.useFkDisplayFilters);
 
   const [countRows] = await pool.query(`SELECT COUNT(*) AS total FROM ${safeTable} ${whereClause}`, values);
   const total = countRows[0]?.total || 0;
@@ -213,13 +243,13 @@ async function getRecords(tableName, page = 1, pageSize = 10, filters = {}) {
   };
 }
 
-async function getRecordsForExport(tableName, filters = {}) {
+async function getRecordsForExport(tableName, filters = {}, options = {}) {
   assertTableAllowed(tableName);
 
   const safeTable = quoteIdentifier(tableName);
   const columns = await getColumns(tableName);
   const availableColumns = new Set(columns.map((column) => column.Field));
-  const { whereClause, values } = buildFilterQuery(filters, availableColumns);
+  const { whereClause, values } = await buildFilterQuery(tableName, filters, availableColumns, options.useFkDisplayFilters);
 
   const [rows] = await pool.query(
     `SELECT * FROM ${safeTable} ${whereClause} ORDER BY id DESC`,
