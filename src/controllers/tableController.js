@@ -158,7 +158,23 @@ async function getTableColumns(req, res) {
   try {
     const { tableName } = req.params;
     const columns = await tableModel.getColumns(tableName);
-    return res.json({ columns });
+    const displayColumn = await tableModel.getDisplayColumn(tableName);
+    return res.json({ columns, displayColumn });
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+}
+
+async function updateDisplayColumn(req, res) {
+  try {
+    const { tableName } = req.params;
+    const { displayColumn } = req.body;
+
+    await tableModel.setDisplayColumn(tableName, displayColumn);
+
+    withWsEvent(req, 'table_display_updated', { tableName, displayColumn });
+
+    return res.json({ message: 'Campo visible actualizado correctamente.' });
   } catch (error) {
     return res.status(400).json({ message: error.message });
   }
@@ -188,5 +204,6 @@ module.exports = {
   addForeignKey,
   deleteForeignKey,
   getTableColumns,
+  updateDisplayColumn,
   getTableColumnsWithFkOptions
 };

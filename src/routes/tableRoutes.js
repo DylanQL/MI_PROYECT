@@ -11,6 +11,7 @@ router.post('/tables', tableController.createTable);
 router.put('/tables/:tableName/edit', tableController.editTable);
 router.delete('/tables/:tableName', tableController.deleteTable);
 router.get('/tables/:tableName/columns', tableController.getTableColumns);
+router.put('/tables/:tableName/display-column', tableController.updateDisplayColumn);
 router.get('/tables/:tableName/columns-with-fk-options', tableController.getTableColumnsWithFkOptions);
 router.get('/tables/:tableName/records', tableController.getRecords);
 router.post('/tables/:tableName/records', tableController.addRecord);

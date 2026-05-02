@@ -513,6 +513,12 @@ thead {
   gap: 12px;
 }
 
+.display-column-form {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e2ebdd;
+}
+
 .fk-card {
   border: 1px solid #dce6d8;
   border-radius: 12px;

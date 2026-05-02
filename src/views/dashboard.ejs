@@ -117,6 +117,16 @@
         </label>
         <button type="submit" class="btn btn-primary"><i class="bi bi-floppy"></i> Aplicar cambios</button>
       </form>
+
+      <form id="displayColumnForm" class="grid-form display-column-form">
+        <h4><i class="bi bi-eye"></i> Campo visible para FK</h4>
+        <label>
+          Campo que se mostrara
+          <select id="editDisplayColumnSelect" required></select>
+          <small class="muted tiny">Este valor se vera cuando otra tabla apunte a esta mediante una FK.</small>
+        </label>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-eye"></i> Guardar campo visible</button>
+      </form>
     </article>
 
     <article id="deleteTable" class="panel section-panel">

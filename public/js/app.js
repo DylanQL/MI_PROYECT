@@ -27,6 +27,7 @@ const reloadRecordsBtn = document.getElementById('reloadRecordsBtn');
 const pageSizeSelect = document.getElementById('pageSizeSelect');
 const showFkDisplayToggle = document.getElementById('showFkDisplayToggle');
 const createDisplayColumnSelect = document.getElementById('createDisplayColumnSelect');
+const editDisplayColumnSelect = document.getElementById('editDisplayColumnSelect');
 const recordFormMode = document.getElementById('recordFormMode');
 const recordSubmitBtn = document.getElementById('recordSubmitBtn');
 const cancelRecordEditBtn = document.getElementById('cancelRecordEditBtn');
@@ -483,6 +484,7 @@ function setupCreateTable() {
 
 function setupEditTable() {
   const form = document.getElementById('editTableForm');
+  const displayColumnForm = document.getElementById('displayColumnForm');
   const actionSelect = document.getElementById('editAction');
   const oldNameWrap = document.getElementById('oldNameWrap');
   const typeWrap = document.getElementById('typeWrap');
@@ -497,6 +499,10 @@ function setupEditTable() {
   }
 
   actionSelect.addEventListener('change', updateEditLayout);
+  editTableSelect.addEventListener('change', async () => {
+    await loadDisplayColumnEditor(editTableSelect.value);
+  });
+
   updateEditLayout();
 
   form.addEventListener('submit', async (event) => {
@@ -520,6 +526,28 @@ function setupEditTable() {
       form.reset();
       updateEditLayout();
       await refreshTables();
+      await loadDisplayColumnEditor(editTableSelect.value);
+      await loadRecordFields();
+      await loadRecords();
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  });
+
+  displayColumnForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const tableName = editTableSelect.value;
+    const displayColumn = editDisplayColumnSelect.value;
+    if (!tableName || !displayColumn) return;
+
+    try {
+      await request(`/api/tables/${encodeURIComponent(tableName)}/display-column`, {
+        method: 'PUT',
+        body: JSON.stringify({ displayColumn })
+      });
+
+      showToast('Campo visible actualizado correctamente.');
       await loadRecordFields();
       await loadRecords();
     } catch (error) {
@@ -916,6 +944,30 @@ function setupSelectTable() {
   }
 }
 
+async function loadDisplayColumnEditor(tableName) {
+  if (!editDisplayColumnSelect) return;
+
+  if (!tableName) {
+    setSelectOptions(editDisplayColumnSelect, [], 'Selecciona una tabla');
+    return;
+  }
+
+  try {
+    const data = await request(`/api/tables/${encodeURIComponent(tableName)}/columns`);
+    const columns = (data.columns || []).map((column) => column.Field);
+
+    setSelectOptions(editDisplayColumnSelect, columns, 'No hay columnas disponibles');
+    if (data.displayColumn && columns.includes(data.displayColumn)) {
+      editDisplayColumnSelect.value = data.displayColumn;
+    } else if (columns.includes('id')) {
+      editDisplayColumnSelect.value = 'id';
+    }
+  } catch (error) {
+    setSelectOptions(editDisplayColumnSelect, [], 'No se pudieron cargar columnas');
+    showToast(error.message, 'error');
+  }
+}
+
 async function refreshTables() {
   const data = await request('/api/tables');
   state.tables = data.tables;
@@ -952,6 +1004,7 @@ async function refreshTables() {
   }
 
   await refreshForeignKeyPanel();
+  await loadDisplayColumnEditor(editTableSelect.value || state.currentTable);
 }
 
 function initWebSocket() {
@@ -963,7 +1016,7 @@ function initWebSocket() {
 
     if (!message?.type) return;
 
-    if (['table_created', 'table_edited', 'table_deleted', 'record_added', 'record_updated', 'record_deleted', 'fk_created', 'fk_deleted'].includes(message.type)) {
+    if (['table_created', 'table_edited', 'table_deleted', 'table_display_updated', 'record_added', 'record_updated', 'record_deleted', 'fk_created', 'fk_deleted'].includes(message.type)) {
       await refreshTables();
       await loadRecordFields();
       await loadRecords();

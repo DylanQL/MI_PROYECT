@@ -129,9 +129,15 @@ async function modifyColumn(tableName, oldName, column) {
   const normalized = normalizeColumn(column);
   const safeTable = quoteIdentifier(tableName);
 
+  const currentDisplayColumn = await getDisplayColumn(tableName);
+
   await pool.query(
     `ALTER TABLE ${safeTable} CHANGE COLUMN ${quoteIdentifier(oldName)} ${quoteIdentifier(normalized.name)} ${normalized.type} ${normalized.nullable ? 'NULL' : 'NOT NULL'}`
   );
+
+  if (currentDisplayColumn === oldName) {
+    await setDisplayColumn(tableName, normalized.name);
+  }
 }
 
 async function dropColumn(tableName, columnName) {
@@ -145,7 +151,12 @@ async function dropColumn(tableName, columnName) {
   }
 
   const safeTable = quoteIdentifier(tableName);
+  const currentDisplayColumn = await getDisplayColumn(tableName);
   await pool.query(`ALTER TABLE ${safeTable} DROP COLUMN ${quoteIdentifier(columnName)}`);
+
+  if (currentDisplayColumn === columnName) {
+    await setDisplayColumn(tableName, 'id');
+  }
 }
 
 function buildFilterQuery(filters, availableColumns) {
