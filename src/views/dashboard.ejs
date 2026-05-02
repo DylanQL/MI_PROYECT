@@ -103,11 +103,15 @@
         </label>
         <label id="oldNameWrap">
           Campo actual
-          <input type="text" name="oldName" placeholder="campo_actual" />
+          <select name="oldName" id="editOldNameSelect"></select>
         </label>
-        <label>
-          Nombre de campo
-          <input type="text" name="name" placeholder="nuevo_campo" required />
+        <label id="nameWrap">
+          <span id="editNameLabel">Nombre de campo</span>
+          <input type="text" name="name" id="editNameInput" placeholder="nuevo_campo" required />
+        </label>
+        <label id="dropNameWrap">
+          Campo a borrar
+          <select name="dropName" id="editDropNameSelect"></select>
         </label>
         <label id="typeWrap">
           Tipo

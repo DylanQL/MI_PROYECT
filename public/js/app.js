@@ -495,6 +495,12 @@ function setupEditTable() {
   const displayColumnForm = document.getElementById('displayColumnForm');
   const actionSelect = document.getElementById('editAction');
   const oldNameWrap = document.getElementById('oldNameWrap');
+  const oldNameSelect = document.getElementById('editOldNameSelect');
+  const nameWrap = document.getElementById('nameWrap');
+  const nameLabel = document.getElementById('editNameLabel');
+  const nameInput = document.getElementById('editNameInput');
+  const dropNameWrap = document.getElementById('dropNameWrap');
+  const dropNameSelect = document.getElementById('editDropNameSelect');
   const typeWrap = document.getElementById('typeWrap');
   const nullableWrap = document.getElementById('nullableWrap');
 
@@ -502,12 +508,23 @@ function setupEditTable() {
     const action = actionSelect.value;
 
     oldNameWrap.style.display = action === 'modify' ? 'grid' : 'none';
+    dropNameWrap.style.display = action === 'drop' ? 'grid' : 'none';
+    nameWrap.style.display = action === 'drop' ? 'none' : 'grid';
     typeWrap.style.display = action === 'drop' ? 'none' : 'grid';
     nullableWrap.style.display = action === 'drop' ? 'none' : 'flex';
+
+    nameInput.required = action !== 'drop';
+    dropNameSelect.required = action === 'drop';
+    oldNameSelect.required = action === 'modify';
+
+    if (nameLabel) {
+      nameLabel.textContent = action === 'modify' ? 'Nuevo nombre de campo' : 'Nombre de campo';
+    }
   }
 
   actionSelect.addEventListener('change', updateEditLayout);
   editTableSelect.addEventListener('change', async () => {
+    await loadEditTableColumnSelectors(editTableSelect.value);
     await loadDisplayColumnEditor(editTableSelect.value);
   });
 
@@ -519,7 +536,7 @@ function setupEditTable() {
     const payload = {
       action: form.action.value,
       oldName: form.oldName.value.trim(),
-      name: form.name.value.trim(),
+      name: form.action.value === 'drop' ? form.dropName.value : form.name.value.trim(),
       type: form.type.value,
       nullable: form.nullable.checked
     };
@@ -534,7 +551,6 @@ function setupEditTable() {
       form.reset();
       updateEditLayout();
       await refreshTables();
-      await loadDisplayColumnEditor(editTableSelect.value);
       await loadRecordFields();
       await loadRecords();
     } catch (error) {
@@ -689,6 +705,13 @@ async function loadColumnsIntoSelect(tableName, selectEl, { includeId = true } =
     setSelectOptions(selectEl, [], 'No se pudieron cargar columnas');
     showToast(error.message, 'error');
   }
+}
+
+async function loadEditTableColumnSelectors(tableName) {
+  await Promise.all([
+    loadColumnsIntoSelect(tableName, document.getElementById('editOldNameSelect'), { includeId: false }),
+    loadColumnsIntoSelect(tableName, document.getElementById('editDropNameSelect'), { includeId: false })
+  ]);
 }
 
 async function loadForeignKeysForTable(tableName) {
@@ -1025,6 +1048,7 @@ async function refreshTables() {
   }
 
   await refreshForeignKeyPanel();
+  await loadEditTableColumnSelectors(editTableSelect.value || state.currentTable);
   await loadDisplayColumnEditor(editTableSelect.value || state.currentTable);
 }
 
