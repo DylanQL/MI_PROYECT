@@ -24,6 +24,7 @@ const clearFiltersBtn = document.getElementById('clearFiltersBtn');
 const prevPageBtn = document.getElementById('prevPage');
 const nextPageBtn = document.getElementById('nextPage');
 const reloadRecordsBtn = document.getElementById('reloadRecordsBtn');
+const downloadExcelBtn = document.getElementById('downloadExcelBtn');
 const pageSizeSelect = document.getElementById('pageSizeSelect');
 const showFkDisplayToggle = document.getElementById('showFkDisplayToggle');
 const createDisplayColumnSelect = document.getElementById('createDisplayColumnSelect');
@@ -273,6 +274,17 @@ function updatePaginationControls() {
   nextPageBtn.disabled = state.currentPage >= state.totalPages || !state.currentTable;
 }
 
+function buildCurrentTableParams(extraParams = {}) {
+  const filters = getFiltersFromUi();
+  const params = new URLSearchParams(extraParams);
+
+  Object.entries(filters).forEach(([field, value]) => {
+    params.append(field, value);
+  });
+
+  return params;
+}
+
 function updateCreateDisplayColumnOptions() {
   if (!createDisplayColumnSelect) return;
 
@@ -300,14 +312,9 @@ async function loadRecords() {
 
   try {
     recordsTable.innerHTML = '<tr><td>Cargando registros...</td></tr>';
-    const filters = getFiltersFromUi();
-    const params = new URLSearchParams({
+    const params = buildCurrentTableParams({
       page: String(state.currentPage),
       pageSize: String(state.pageSize)
-    });
-
-    Object.entries(filters).forEach(([field, value]) => {
-      params.append(field, value);
     });
 
     const data = await request(`/api/tables/${encodeURIComponent(state.currentTable)}/records?${params.toString()}`);
@@ -935,6 +942,18 @@ function setupSelectTable() {
     showToast('Datos recargados.');
   });
 
+  downloadExcelBtn?.addEventListener('click', () => {
+    if (!state.currentTable) {
+      showToast('Selecciona una tabla para descargar.', 'error');
+      return;
+    }
+
+    const params = buildCurrentTableParams({
+      fkDisplay: state.showFkDisplay ? '1' : '0'
+    });
+    window.location.href = `/api/tables/${encodeURIComponent(state.currentTable)}/export?${params.toString()}`;
+  });
+
   if (showFkDisplayToggle) {
     showFkDisplayToggle.checked = state.showFkDisplay;
     showFkDisplayToggle.addEventListener('change', () => {
@@ -992,6 +1011,7 @@ async function refreshTables() {
   clearFiltersBtn.disabled = !hasTables;
   pageSizeSelect.disabled = !hasTables;
   reloadRecordsBtn.disabled = !hasTables;
+  if (downloadExcelBtn) downloadExcelBtn.disabled = !hasTables;
 
   if (!hasTables) {
     filtersContainer.innerHTML = '';

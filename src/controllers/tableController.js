@@ -6,6 +6,35 @@ function withWsEvent(req, event, payload = {}) {
   }
 }
 
+function csvEscape(value) {
+  const raw = value === null || value === undefined ? '' : String(value);
+  return `"${raw.replace(/"/g, '""')}"`;
+}
+
+function buildCsv({ columns, rows, fkDisplaysByColumn, showFkDisplay }) {
+  const lines = [columns.map(csvEscape).join(',')];
+
+  rows.forEach((row) => {
+    const values = columns.map((columnName) => {
+      const rawValue = row[columnName];
+      const fkDisplay = fkDisplaysByColumn[columnName];
+
+      if (showFkDisplay && fkDisplay && rawValue !== null && rawValue !== undefined) {
+        const displayValue = fkDisplay.values?.[String(rawValue)];
+        if (displayValue !== undefined && displayValue !== null) {
+          return csvEscape(displayValue);
+        }
+      }
+
+      return csvEscape(rawValue);
+    });
+
+    lines.push(values.join(','));
+  });
+
+  return `\uFEFF${lines.join('\r\n')}`;
+}
+
 async function getTables(req, res) {
   try {
     const tables = await tableModel.listTables();
@@ -72,6 +101,28 @@ async function getRecords(req, res) {
     const records = await tableModel.getRecords(tableName, page, pageSize, filters);
 
     return res.json(records);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+}
+
+async function exportRecords(req, res) {
+  try {
+    const { tableName } = req.params;
+    const { fkDisplay, ...filters } = req.query;
+    const showFkDisplay = fkDisplay === '1' || fkDisplay === 'true';
+    const records = await tableModel.getRecordsForExport(tableName, filters);
+    const csv = buildCsv({
+      columns: records.columns,
+      rows: records.data,
+      fkDisplaysByColumn: records.fkDisplaysByColumn,
+      showFkDisplay
+    });
+    const safeFileName = `${tableName}_${showFkDisplay ? 'fk-campo' : 'fk-id'}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFileName}"`);
+    return res.send(csv);
   } catch (error) {
     return res.status(400).json({ message: error.message });
   }
@@ -197,6 +248,7 @@ module.exports = {
   editTable,
   deleteTable,
   getRecords,
+  exportRecords,
   addRecord,
   updateRecord,
   deleteRecord,

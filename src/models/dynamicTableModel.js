@@ -213,6 +213,27 @@ async function getRecords(tableName, page = 1, pageSize = 10, filters = {}) {
   };
 }
 
+async function getRecordsForExport(tableName, filters = {}) {
+  assertTableAllowed(tableName);
+
+  const safeTable = quoteIdentifier(tableName);
+  const columns = await getColumns(tableName);
+  const availableColumns = new Set(columns.map((column) => column.Field));
+  const { whereClause, values } = buildFilterQuery(filters, availableColumns);
+
+  const [rows] = await pool.query(
+    `SELECT * FROM ${safeTable} ${whereClause} ORDER BY id DESC`,
+    values
+  );
+  const fkDisplaysByColumn = await getForeignKeyDisplaysForRows(tableName, rows);
+
+  return {
+    data: rows,
+    columns: columns.map((column) => column.Field),
+    fkDisplaysByColumn
+  };
+}
+
 async function getForeignKeyDisplaysForRows(tableName, rows) {
   if (!rows.length) return {};
 
@@ -513,6 +534,7 @@ module.exports = {
   modifyColumn,
   dropColumn,
   getRecords,
+  getRecordsForExport,
   addRecord,
   updateRecord,
   getForeignKeys,
