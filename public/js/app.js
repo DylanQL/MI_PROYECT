@@ -8,6 +8,7 @@ const state = {
   currentColumns: [],
   currentRows: [],
   fkDisplaysByColumn: {},
+  currentForeignKeys: [],
   showFkDisplay: false,
   editingRecordId: null
 };
@@ -688,6 +689,63 @@ function setSelectOptions(selectEl, values, emptyText) {
   selectEl.innerHTML = values.map((value) => `<option value="${value}">${value}</option>`).join('');
 }
 
+function prependEmptyOption(selectEl, text) {
+  if (!selectEl) return;
+
+  const existingEmptyOption = Array.from(selectEl.options).find((option) => option.value === '');
+  if (existingEmptyOption) {
+    existingEmptyOption.textContent = text;
+    selectEl.value = '';
+    return;
+  }
+
+  const option = document.createElement('option');
+  option.value = '';
+  option.textContent = text;
+  selectEl.insertBefore(option, selectEl.firstChild);
+  selectEl.value = '';
+}
+
+function getSelectValues(selectEl) {
+  return Array.from(selectEl?.options || [])
+    .map((option) => option.value)
+    .filter(Boolean);
+}
+
+function normalizeIdentifierPart(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function getSingularTableHint(tableName) {
+  const normalized = normalizeIdentifierPart(tableName);
+  if (normalized.endsWith('es') && normalized.length > 3) return normalized.slice(0, -2);
+  if (normalized.endsWith('s') && normalized.length > 2) return normalized.slice(0, -1);
+  return normalized;
+}
+
+function getColumnTableHint(columnName) {
+  const normalized = normalizeIdentifierPart(columnName);
+  if (normalized.endsWith('id') && normalized.length > 2) return normalized.slice(0, -2);
+  return normalized;
+}
+
+function pickOption(selectEl, preferredValue) {
+  const values = getSelectValues(selectEl);
+  if (!values.length) return '';
+
+  if (preferredValue && values.includes(preferredValue)) {
+    selectEl.value = preferredValue;
+    return preferredValue;
+  }
+
+  selectEl.value = values[0];
+  return values[0];
+}
+
 async function loadColumnsIntoSelect(tableName, selectEl, { includeId = true } = {}) {
   if (!selectEl) return;
 
@@ -709,6 +767,32 @@ async function loadColumnsIntoSelect(tableName, selectEl, { includeId = true } =
   }
 }
 
+function pickPreferredForeignKeyColumn(referencedTable = '') {
+  const columns = getSelectValues(fkColumnSelect).filter((columnName) => columnName !== 'id');
+  if (!columns.length) return '';
+
+  const referencedHint = getSingularTableHint(referencedTable);
+  if (!referencedHint) return '';
+
+  const idColumn = columns.find((columnName) => normalizeIdentifierPart(columnName).endsWith('id'));
+  const matchingColumn = columns.find((columnName) => getColumnTableHint(columnName).includes(referencedHint) || referencedHint.includes(getColumnTableHint(columnName)));
+
+  return matchingColumn || idColumn || columns[0];
+}
+
+function pickReferencedTableFromColumn(columnName) {
+  const columnHint = getColumnTableHint(columnName);
+  if (!columnHint) return '';
+
+  const tables = state.tables.filter((tableName) => tableName !== fkTableSelect.value);
+  const matchingTable = tables.find((tableName) => {
+    const tableHint = getSingularTableHint(tableName);
+    return tableHint && (columnHint.includes(tableHint) || tableHint.includes(columnHint));
+  });
+
+  return matchingTable || tables[0] || fkTableSelect.value;
+}
+
 async function loadReferencedColumnsIntoSelect(tableName) {
   await loadColumnsIntoSelect(tableName, fkRefColumnSelect, { includeId: true });
   if (Array.from(fkRefColumnSelect.options).some((option) => option.value === 'id')) {
@@ -724,6 +808,24 @@ function setDefaultForeignKeyOptions() {
   fkOnUpdate.value = 'RESTRICT';
 }
 
+async function applyForeignKeyDefaults() {
+  prependEmptyOption(fkColumnSelect, 'Selecciona una columna');
+  prependEmptyOption(fkRefTableSelect, 'Selecciona una tabla destino');
+  setSelectOptions(fkRefColumnSelect, [], 'Selecciona una tabla destino');
+  setDefaultForeignKeyOptions();
+}
+
+function applyForeignKeySelection(foreignKey) {
+  if (!foreignKey) return false;
+
+  pickOption(fkColumnSelect, foreignKey.columnName);
+  pickOption(fkRefTableSelect, foreignKey.referencedTable);
+  pickOption(fkRefColumnSelect, foreignKey.referencedColumn);
+  fkOnDelete.value = foreignKey.deleteRule || 'RESTRICT';
+  fkOnUpdate.value = foreignKey.updateRule || 'RESTRICT';
+  return true;
+}
+
 async function loadEditTableColumnSelectors(tableName) {
   await Promise.all([
     loadColumnsIntoSelect(tableName, document.getElementById('editOldNameSelect'), { includeId: false }),
@@ -737,19 +839,21 @@ async function loadForeignKeysForTable(tableName) {
   if (!tableName) {
     setSelectOptions(fkConstraintSelect, [], 'Selecciona una tabla');
     fkList.innerHTML = '<li>Selecciona una tabla para ver sus relaciones.</li>';
-    return;
+    state.currentForeignKeys = [];
+    return [];
   }
 
   try {
     const data = await request(`/api/tables/${encodeURIComponent(tableName)}/foreign-keys`);
     const foreignKeys = data.foreignKeys || [];
+    state.currentForeignKeys = foreignKeys;
     const uniqueConstraints = Array.from(new Set(foreignKeys.map((item) => item.constraintName)));
 
     setSelectOptions(fkConstraintSelect, uniqueConstraints, 'No hay constraints FK');
 
     if (!foreignKeys.length) {
       fkList.innerHTML = '<li>Esta tabla no tiene llaves foraneas.</li>';
-      return;
+      return [];
     }
 
     fkList.innerHTML = foreignKeys
@@ -758,10 +862,13 @@ async function loadForeignKeysForTable(tableName) {
           `<li><strong>${item.constraintName}</strong>: ${item.columnName} -> ${item.referencedTable}.${item.referencedColumn} (ON DELETE ${item.deleteRule}, ON UPDATE ${item.updateRule})</li>`
       )
       .join('');
+    return foreignKeys;
   } catch (error) {
+    state.currentForeignKeys = [];
     setSelectOptions(fkConstraintSelect, [], 'No se pudo cargar');
     fkList.innerHTML = '<li>No se pudieron cargar las relaciones.</li>';
     showToast(error.message, 'error');
+    return [];
   }
 }
 
@@ -776,13 +883,19 @@ async function refreshForeignKeyPanel() {
     return;
   }
 
-  if (!fkTableSelect.value) fkTableSelect.value = state.currentTable || state.tables[0];
-  if (!fkDeleteTableSelect.value) fkDeleteTableSelect.value = fkTableSelect.value;
-  if (!fkRefTableSelect.value) fkRefTableSelect.value = state.tables.find((table) => table !== fkTableSelect.value) || fkTableSelect.value;
+  fkTableSelect.value = state.currentTable || fkTableSelect.value || state.tables[0];
+  fkDeleteTableSelect.value = fkTableSelect.value;
 
   await loadColumnsIntoSelect(fkTableSelect.value, fkColumnSelect, { includeId: true });
-  await loadReferencedColumnsIntoSelect(fkRefTableSelect.value);
-  await loadForeignKeysForTable(fkDeleteTableSelect.value);
+  const foreignKeys = await loadForeignKeysForTable(fkDeleteTableSelect.value);
+
+  if (foreignKeys.length) {
+    fkRefTableSelect.value = foreignKeys[0].referencedTable;
+    await loadReferencedColumnsIntoSelect(fkRefTableSelect.value);
+    applyForeignKeySelection(foreignKeys[0]);
+  } else {
+    await applyForeignKeyDefaults();
+  }
 }
 
 function setupForeignKeys() {
@@ -801,10 +914,47 @@ function setupForeignKeys() {
   });
 
   fkTableSelect.addEventListener('change', async () => {
+    fkDeleteTableSelect.value = fkTableSelect.value;
     await loadColumnsIntoSelect(fkTableSelect.value, fkColumnSelect, { includeId: true });
+    const foreignKeys = await loadForeignKeysForTable(fkTableSelect.value);
+    if (foreignKeys.length) {
+      fkRefTableSelect.value = foreignKeys[0].referencedTable;
+      await loadReferencedColumnsIntoSelect(fkRefTableSelect.value);
+      applyForeignKeySelection(foreignKeys[0]);
+    } else {
+      await applyForeignKeyDefaults();
+    }
+  });
+
+  fkColumnSelect.addEventListener('change', async () => {
+    if (!fkColumnSelect.value) {
+      prependEmptyOption(fkRefTableSelect, 'Selecciona una tabla destino');
+      setSelectOptions(fkRefColumnSelect, [], 'Selecciona una tabla destino');
+      setDefaultForeignKeyOptions();
+      return;
+    }
+
+    const preferredTable = pickReferencedTableFromColumn(fkColumnSelect.value);
+    if (preferredTable) {
+      fkRefTableSelect.value = preferredTable;
+      await loadReferencedColumnsIntoSelect(preferredTable);
+    }
+    if (!fkAdvancedToggle?.checked) {
+      setDefaultForeignKeyOptions();
+    }
   });
 
   fkRefTableSelect.addEventListener('change', async () => {
+    if (!fkRefTableSelect.value) {
+      setSelectOptions(fkRefColumnSelect, [], 'Selecciona una tabla destino');
+      setDefaultForeignKeyOptions();
+      return;
+    }
+
+    const preferredColumn = pickPreferredForeignKeyColumn(fkRefTableSelect.value);
+    if (preferredColumn) {
+      fkColumnSelect.value = preferredColumn;
+    }
     await loadReferencedColumnsIntoSelect(fkRefTableSelect.value);
     if (!fkAdvancedToggle?.checked) {
       setDefaultForeignKeyOptions();
@@ -812,7 +962,25 @@ function setupForeignKeys() {
   });
 
   fkDeleteTableSelect.addEventListener('change', async () => {
-    await loadForeignKeysForTable(fkDeleteTableSelect.value);
+    const foreignKeys = await loadForeignKeysForTable(fkDeleteTableSelect.value);
+    if (foreignKeys.length) {
+      fkTableSelect.value = fkDeleteTableSelect.value;
+      await loadColumnsIntoSelect(fkTableSelect.value, fkColumnSelect, { includeId: true });
+      fkRefTableSelect.value = foreignKeys[0].referencedTable;
+      await loadReferencedColumnsIntoSelect(fkRefTableSelect.value);
+      applyForeignKeySelection(foreignKeys[0]);
+    }
+  });
+
+  fkConstraintSelect.addEventListener('change', async () => {
+    const foreignKey = state.currentForeignKeys.find((item) => item.constraintName === fkConstraintSelect.value);
+    if (!foreignKey) return;
+
+    fkTableSelect.value = fkDeleteTableSelect.value;
+    await loadColumnsIntoSelect(fkTableSelect.value, fkColumnSelect, { includeId: true });
+    fkRefTableSelect.value = foreignKey.referencedTable;
+    await loadReferencedColumnsIntoSelect(fkRefTableSelect.value);
+    applyForeignKeySelection(foreignKey);
   });
 
   fkForm.addEventListener('submit', async (event) => {
