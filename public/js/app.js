@@ -7,6 +7,8 @@ const state = {
   totalPages: 1,
   currentColumns: [],
   currentRows: [],
+  fkDisplaysByColumn: {},
+  showFkDisplay: false,
   editingRecordId: null
 };
 
@@ -23,6 +25,8 @@ const prevPageBtn = document.getElementById('prevPage');
 const nextPageBtn = document.getElementById('nextPage');
 const reloadRecordsBtn = document.getElementById('reloadRecordsBtn');
 const pageSizeSelect = document.getElementById('pageSizeSelect');
+const showFkDisplayToggle = document.getElementById('showFkDisplayToggle');
+const createDisplayColumnSelect = document.getElementById('createDisplayColumnSelect');
 const recordFormMode = document.getElementById('recordFormMode');
 const recordSubmitBtn = document.getElementById('recordSubmitBtn');
 const cancelRecordEditBtn = document.getElementById('cancelRecordEditBtn');
@@ -268,6 +272,22 @@ function updatePaginationControls() {
   nextPageBtn.disabled = state.currentPage >= state.totalPages || !state.currentTable;
 }
 
+function updateCreateDisplayColumnOptions() {
+  if (!createDisplayColumnSelect) return;
+
+  const createColumnsContainer = document.getElementById('createColumnsContainer');
+  const currentValue = createDisplayColumnSelect.value || 'id';
+  const columnNames = Array.from(createColumnsContainer.querySelectorAll('.column-name'))
+    .map((input) => input.value.trim())
+    .filter(Boolean);
+  const uniqueColumns = Array.from(new Set(['id', ...columnNames]));
+
+  createDisplayColumnSelect.innerHTML = uniqueColumns
+    .map((columnName) => `<option value="${escapeHtml(columnName)}">${escapeHtml(columnName)}</option>`)
+    .join('');
+  createDisplayColumnSelect.value = uniqueColumns.includes(currentValue) ? currentValue : uniqueColumns[0];
+}
+
 async function loadRecords() {
   if (!state.currentTable) {
     recordsTable.innerHTML = '<tr><td>No hay tabla seleccionada.</td></tr>';
@@ -294,6 +314,7 @@ async function loadRecords() {
     state.totalPages = data.pagination.totalPages;
     state.currentColumns = data.columns || [];
     state.currentRows = data.data || [];
+    state.fkDisplaysByColumn = data.fkDisplaysByColumn || {};
 
     if (state.currentPage > state.totalPages) {
       state.currentPage = state.totalPages;
@@ -319,7 +340,7 @@ function renderRecordsTable(columns = [], rows = []) {
   }
 
   const hasIdColumn = columns.includes('id');
-  const head = `<thead><tr>${columns.map((col) => `<th>${col}</th>`).join('')}${hasIdColumn ? '<th>Acciones</th>' : ''}</tr></thead>`;
+  const head = `<thead><tr>${columns.map((col) => `<th>${escapeHtml(col)}</th>`).join('')}${hasIdColumn ? '<th>Acciones</th>' : ''}</tr></thead>`;
 
   if (!rows.length) {
     recordsTable.innerHTML = `${head}<tbody><tr><td colspan="${columns.length + (hasIdColumn ? 1 : 0)}">No hay registros para mostrar.</td></tr></tbody>`;
@@ -329,7 +350,7 @@ function renderRecordsTable(columns = [], rows = []) {
   const body = rows
     .map(
       (row) =>
-        `<tr>${columns.map((col) => `<td>${row[col] ?? ''}</td>`).join('')}${
+        `<tr>${columns.map((col) => `<td>${formatCellValue(row, col)}</td>`).join('')}${
           hasIdColumn
             ? `<td>
                 <button type="button" class="btn btn-ghost btn-sm edit-record-btn" data-id="${row.id}"><i class="bi bi-pencil-square"></i> Editar</button>
@@ -341,6 +362,20 @@ function renderRecordsTable(columns = [], rows = []) {
     .join('');
 
   recordsTable.innerHTML = `${head}<tbody>${body}</tbody>`;
+}
+
+function formatCellValue(row, columnName) {
+  const rawValue = row[columnName];
+  const fkDisplay = state.fkDisplaysByColumn[columnName];
+
+  if (state.showFkDisplay && fkDisplay && rawValue !== null && rawValue !== undefined) {
+    const displayValue = fkDisplay.values?.[String(rawValue)];
+    if (displayValue !== undefined && displayValue !== null) {
+      return `<span title="ID FK: ${escapeHtml(rawValue)}">${escapeHtml(displayValue)}</span>`;
+    }
+  }
+
+  return escapeHtml(rawValue ?? '');
 }
 
 async function handleEditRecordClick(event) {
@@ -397,7 +432,10 @@ function createColumnRow() {
 
   container.querySelector('.remove-column').addEventListener('click', () => {
     container.remove();
+    updateCreateDisplayColumnOptions();
   });
+
+  container.querySelector('.column-name').addEventListener('input', updateCreateDisplayColumnOptions);
 
   return container;
 }
@@ -408,9 +446,11 @@ function setupCreateTable() {
 
   document.getElementById('addCreateColumn').addEventListener('click', () => {
     createColumnsContainer.appendChild(createColumnRow());
+    updateCreateDisplayColumnOptions();
   });
 
   createColumnsContainer.appendChild(createColumnRow());
+  updateCreateDisplayColumnOptions();
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -421,17 +461,19 @@ function setupCreateTable() {
       type: row.querySelector('.column-type').value,
       nullable: row.querySelector('.column-nullable').checked
     }));
+    const displayColumn = createDisplayColumnSelect?.value || 'id';
 
     try {
       await request('/api/tables', {
         method: 'POST',
-        body: JSON.stringify({ tableName, columns })
+        body: JSON.stringify({ tableName, columns, displayColumn })
       });
 
       showToast('Tabla creada correctamente.');
       form.reset();
       createColumnsContainer.innerHTML = '';
       createColumnsContainer.appendChild(createColumnRow());
+      updateCreateDisplayColumnOptions();
       await refreshTables();
     } catch (error) {
       showToast(error.message, 'error');
@@ -864,6 +906,14 @@ function setupSelectTable() {
     await loadRecords();
     showToast('Datos recargados.');
   });
+
+  if (showFkDisplayToggle) {
+    showFkDisplayToggle.checked = state.showFkDisplay;
+    showFkDisplayToggle.addEventListener('change', () => {
+      state.showFkDisplay = showFkDisplayToggle.checked;
+      renderRecordsTable(state.currentColumns, state.currentRows);
+    });
+  }
 }
 
 async function refreshTables() {

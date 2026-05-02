@@ -29,6 +29,39 @@ async function getColumns(tableName) {
   return rows;
 }
 
+async function getDisplayColumn(tableName) {
+  assertTableAllowed(tableName);
+
+  const [rows] = await pool.query(
+    'SELECT display_column AS displayColumn FROM table_display_settings WHERE table_name = ? LIMIT 1',
+    [tableName]
+  );
+
+  return rows[0]?.displayColumn || null;
+}
+
+async function setDisplayColumn(tableName, displayColumn) {
+  assertTableAllowed(tableName);
+
+  if (!isValidIdentifier(displayColumn)) {
+    throw new Error('Campo visible invalido.');
+  }
+
+  const columns = await getColumns(tableName);
+  const availableColumns = new Set(columns.map((column) => column.Field));
+
+  if (!availableColumns.has(displayColumn)) {
+    throw new Error('El campo visible debe existir en la tabla.');
+  }
+
+  await pool.query(
+    `INSERT INTO table_display_settings (table_name, display_column)
+     VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE display_column = VALUES(display_column)`,
+    [tableName, displayColumn]
+  );
+}
+
 function normalizeColumn(column) {
   const name = String(column.name || '').trim();
   const type = String(column.type || '').toUpperCase().trim();
@@ -44,7 +77,7 @@ function normalizeColumn(column) {
   return { name, type, nullable };
 }
 
-async function createTable(tableName, columns) {
+async function createTable(tableName, columns, displayColumn = 'id') {
   assertTableAllowed(tableName);
 
   if (!Array.isArray(columns) || columns.length === 0) {
@@ -52,6 +85,13 @@ async function createTable(tableName, columns) {
   }
 
   const normalizedColumns = columns.map(normalizeColumn);
+  const safeDisplayColumn = String(displayColumn || 'id').trim();
+  const availableDisplayColumns = new Set(['id', ...normalizedColumns.map((column) => column.name)]);
+
+  if (!isValidIdentifier(safeDisplayColumn) || !availableDisplayColumns.has(safeDisplayColumn)) {
+    throw new Error('El campo visible debe ser id o una columna de la tabla.');
+  }
+
   const safeTable = quoteIdentifier(tableName);
 
   const columnSql = normalizedColumns
@@ -60,12 +100,14 @@ async function createTable(tableName, columns) {
 
   const sql = `CREATE TABLE ${safeTable} (id INT AUTO_INCREMENT PRIMARY KEY, ${columnSql})`;
   await pool.query(sql);
+  await setDisplayColumn(tableName, safeDisplayColumn);
 }
 
 async function deleteTable(tableName) {
   assertTableAllowed(tableName);
   const safeTable = quoteIdentifier(tableName);
   await pool.query(`DROP TABLE ${safeTable}`);
+  await pool.query('DELETE FROM table_display_settings WHERE table_name = ?', [tableName]);
 }
 
 async function addColumn(tableName, column) {
@@ -145,6 +187,8 @@ async function getRecords(tableName, page = 1, pageSize = 10, filters = {}) {
     [...values, safePageSize, offset]
   );
 
+  const fkDisplaysByColumn = await getForeignKeyDisplaysForRows(tableName, rows);
+
   return {
     data: rows,
     pagination: {
@@ -153,8 +197,52 @@ async function getRecords(tableName, page = 1, pageSize = 10, filters = {}) {
       total,
       totalPages: Math.ceil(total / safePageSize) || 1
     },
-    columns: columns.map((column) => column.Field)
+    columns: columns.map((column) => column.Field),
+    fkDisplaysByColumn
   };
+}
+
+async function getForeignKeyDisplaysForRows(tableName, rows) {
+  if (!rows.length) return {};
+
+  const foreignKeys = await getForeignKeys(tableName);
+  if (!foreignKeys.length) return {};
+
+  const fkDisplaysByColumn = {};
+
+  for (const fkMeta of foreignKeys) {
+    const values = Array.from(new Set(rows.map((row) => row[fkMeta.columnName]).filter((value) => value !== null && value !== undefined)));
+    if (!values.length) continue;
+
+    const referencedTable = fkMeta.referencedTable;
+    const referencedColumn = fkMeta.referencedColumn;
+    const configuredDisplayColumn = await getDisplayColumn(referencedTable);
+    const referencedColumns = await getColumns(referencedTable);
+    const availableColumns = referencedColumns.map((column) => column.Field);
+    const displayColumn = configuredDisplayColumn && availableColumns.includes(configuredDisplayColumn)
+      ? configuredDisplayColumn
+      : availableColumns.find((column) => column !== referencedColumn) || referencedColumn;
+
+    const safeReferencedTable = quoteIdentifier(referencedTable);
+    const safeReferencedColumn = quoteIdentifier(referencedColumn);
+    const safeDisplayColumn = quoteIdentifier(displayColumn);
+    const placeholders = values.map(() => '?').join(', ');
+    const [displayRows] = await pool.query(
+      `SELECT ${safeReferencedColumn} AS fkValue, ${safeDisplayColumn} AS displayValue
+       FROM ${safeReferencedTable}
+       WHERE ${safeReferencedColumn} IN (${placeholders})`,
+      values
+    );
+
+    fkDisplaysByColumn[fkMeta.columnName] = {
+      referencedTable,
+      referencedColumn,
+      displayColumn,
+      values: Object.fromEntries(displayRows.map((row) => [String(row.fkValue), row.displayValue]))
+    };
+  }
+
+  return fkDisplaysByColumn;
 }
 
 async function addRecord(tableName, payload) {
@@ -293,9 +381,13 @@ async function getForeignKeyOptionsForTable(tableName) {
     const referencedColumn = fkMeta.referencedColumn;
     const safeReferencedTable = quoteIdentifier(referencedTable);
     const safeReferencedColumn = quoteIdentifier(referencedColumn);
+    const configuredDisplayColumn = await getDisplayColumn(referencedTable);
 
     const referencedColumns = await getColumns(referencedTable);
-    const displayColumns = referencedColumns
+    const availableColumns = referencedColumns.map((column) => column.Field);
+    const displayColumns = configuredDisplayColumn && availableColumns.includes(configuredDisplayColumn)
+      ? [configuredDisplayColumn].filter((column) => column !== referencedColumn)
+      : referencedColumns
       .map((column) => column.Field)
       .filter((field) => field !== referencedColumn)
       .slice(0, 3);
@@ -414,6 +506,8 @@ module.exports = {
   updateRecord,
   getForeignKeys,
   getForeignKeyOptionsForTable,
+  getDisplayColumn,
+  setDisplayColumn,
   addForeignKey,
   dropForeignKey,
   deleteRecord,

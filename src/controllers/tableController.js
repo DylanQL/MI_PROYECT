@@ -17,8 +17,8 @@ async function getTables(req, res) {
 
 async function createTable(req, res) {
   try {
-    const { tableName, columns } = req.body;
-    await tableModel.createTable(tableName, columns);
+    const { tableName, columns, displayColumn } = req.body;
+    await tableModel.createTable(tableName, columns, displayColumn);
 
     withWsEvent(req, 'table_created', { tableName });
 

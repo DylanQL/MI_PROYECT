@@ -7,6 +7,7 @@ Aplicacion MVC con Node.js, Express, MySQL y WebSocket para gestionar tablas y r
 - Login (sin registro publico)
 - Panel administrador en `/admin` para crear, editar y eliminar cuentas
 - Edicion de perfil: username, nombres, apellidos y contrasena
+- Campo visible por tabla para mostrar valores amigables en columnas FK
 - Menu principal con:
   - Seleccionar tabla
   - Crear tabla
@@ -20,7 +21,7 @@ Aplicacion MVC con Node.js, Express, MySQL y WebSocket para gestionar tablas y r
 
 ## Seguridad aplicada
 
-- Se bloquea la tabla `users` y la tabla de sesiones `app_sessions` para que no aparezcan ni se puedan manipular desde el dashboard.
+- Se bloquean las tablas internas `users`, `app_sessions` y `table_display_settings` para que no aparezcan ni se puedan manipular desde el dashboard.
 - Solo usuarios con `is_admin = 1` pueden acceder al panel `/admin`.
 - Validacion de identificadores SQL para reducir riesgo de inyeccion.
 

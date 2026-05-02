@@ -366,6 +366,22 @@ thead {
   font-weight: 600;
 }
 
+.toggle-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #edf5f0;
+}
+
+.toggle-control input,
+.check-label input {
+  width: auto;
+}
+
 .pagination {
   margin-top: 12px;
   display: flex;

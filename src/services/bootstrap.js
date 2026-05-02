@@ -42,8 +42,20 @@ async function ensureUsersSchema() {
   }
 }
 
+async function ensureTableDisplaySettingsSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS table_display_settings (
+      table_name VARCHAR(64) PRIMARY KEY,
+      display_column VARCHAR(64) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+}
+
 async function ensureAppSetup() {
   await ensureUsersSchema();
+  await ensureTableDisplaySettingsSchema();
 }
 
 module.exports = {

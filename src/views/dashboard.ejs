@@ -36,6 +36,10 @@
       <div class="filters-head">
         <h4>Filtros ilimitados</h4>
         <div class="toolbar-actions">
+          <label class="toggle-control">
+            <input type="checkbox" id="showFkDisplayToggle" />
+            Mostrar campo FK
+          </label>
           <button id="addFilterBtn" class="btn btn-ghost"><i class="bi bi-funnel"></i> Agregar filtro</button>
           <button id="clearFiltersBtn" class="btn btn-ghost"><i class="bi bi-x-circle"></i> Limpiar filtros</button>
         </div>
@@ -71,6 +75,11 @@
           <input type="text" name="tableName" placeholder="productos" required />
         </label>
         <div id="createColumnsContainer"></div>
+        <label>
+          Campo visible para FK
+          <select name="displayColumn" id="createDisplayColumnSelect"></select>
+          <small class="muted tiny">Cuando otra tabla apunte a esta, este campo podra mostrarse en lugar del ID.</small>
+        </label>
         <button type="button" id="addCreateColumn" class="btn btn-ghost"><i class="bi bi-plus-lg"></i> Agregar campo</button>
         <button type="submit" class="btn btn-primary"><i class="bi bi-check2-circle"></i> Crear tabla</button>
       </form>
