@@ -181,28 +181,34 @@
               Tabla destino
               <select id="fkRefTableSelect" name="referencedTable" required></select>
             </label>
-            <label>
-              Columna destino
-              <select id="fkRefColumnSelect" name="referencedColumn" required></select>
+            <label class="toggle-control">
+              <input type="checkbox" id="fkAdvancedToggle" />
+              Mostrar opciones avanzadas
             </label>
-            <label>
-              Regla al eliminar
-              <select id="fkOnDelete" name="onDelete">
-                <option value="RESTRICT">RESTRICT</option>
-                <option value="CASCADE">CASCADE</option>
-                <option value="SET NULL">SET NULL</option>
-                <option value="NO ACTION">NO ACTION</option>
-              </select>
-            </label>
-            <label>
-              Regla al actualizar
-              <select id="fkOnUpdate" name="onUpdate">
-                <option value="CASCADE">CASCADE</option>
-                <option value="RESTRICT">RESTRICT</option>
-                <option value="SET NULL">SET NULL</option>
-                <option value="NO ACTION">NO ACTION</option>
-              </select>
-            </label>
+            <div id="fkAdvancedOptions" class="grid-form hidden" hidden>
+              <label>
+                Columna destino
+                <select id="fkRefColumnSelect" name="referencedColumn" required></select>
+              </label>
+              <label>
+                Regla al eliminar
+                <select id="fkOnDelete" name="onDelete">
+                  <option value="RESTRICT">RESTRICT</option>
+                  <option value="CASCADE">CASCADE</option>
+                  <option value="SET NULL">SET NULL</option>
+                  <option value="NO ACTION">NO ACTION</option>
+                </select>
+              </label>
+              <label>
+                Regla al actualizar
+                <select id="fkOnUpdate" name="onUpdate">
+                  <option value="RESTRICT">RESTRICT</option>
+                  <option value="CASCADE">CASCADE</option>
+                  <option value="SET NULL">SET NULL</option>
+                  <option value="NO ACTION">NO ACTION</option>
+                </select>
+              </label>
+            </div>
             <button type="submit" class="btn btn-primary"><i class="bi bi-link"></i> Crear FK</button>
           </form>
         </section>

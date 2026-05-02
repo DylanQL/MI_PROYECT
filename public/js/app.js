@@ -38,6 +38,8 @@ const fkTableSelect = document.getElementById('fkTableSelect');
 const fkColumnSelect = document.getElementById('fkColumnSelect');
 const fkRefTableSelect = document.getElementById('fkRefTableSelect');
 const fkRefColumnSelect = document.getElementById('fkRefColumnSelect');
+const fkAdvancedToggle = document.getElementById('fkAdvancedToggle');
+const fkAdvancedOptions = document.getElementById('fkAdvancedOptions');
 const fkDeleteTableSelect = document.getElementById('fkDeleteTableSelect');
 const fkConstraintSelect = document.getElementById('fkConstraintSelect');
 const fkOnDelete = document.getElementById('fkOnDelete');
@@ -707,6 +709,21 @@ async function loadColumnsIntoSelect(tableName, selectEl, { includeId = true } =
   }
 }
 
+async function loadReferencedColumnsIntoSelect(tableName) {
+  await loadColumnsIntoSelect(tableName, fkRefColumnSelect, { includeId: true });
+  if (Array.from(fkRefColumnSelect.options).some((option) => option.value === 'id')) {
+    fkRefColumnSelect.value = 'id';
+  }
+}
+
+function setDefaultForeignKeyOptions() {
+  if (Array.from(fkRefColumnSelect.options).some((option) => option.value === 'id')) {
+    fkRefColumnSelect.value = 'id';
+  }
+  fkOnDelete.value = 'RESTRICT';
+  fkOnUpdate.value = 'RESTRICT';
+}
+
 async function loadEditTableColumnSelectors(tableName) {
   await Promise.all([
     loadColumnsIntoSelect(tableName, document.getElementById('editOldNameSelect'), { includeId: false }),
@@ -764,22 +781,34 @@ async function refreshForeignKeyPanel() {
   if (!fkRefTableSelect.value) fkRefTableSelect.value = state.tables.find((table) => table !== fkTableSelect.value) || fkTableSelect.value;
 
   await loadColumnsIntoSelect(fkTableSelect.value, fkColumnSelect, { includeId: true });
-  await loadColumnsIntoSelect(fkRefTableSelect.value, fkRefColumnSelect, { includeId: true });
+  await loadReferencedColumnsIntoSelect(fkRefTableSelect.value);
   await loadForeignKeysForTable(fkDeleteTableSelect.value);
 }
 
 function setupForeignKeys() {
   if (!fkForm || !fkDeleteForm) return;
 
-  fkOnDelete.value = 'RESTRICT';
-  fkOnUpdate.value = 'CASCADE';
+  setDefaultForeignKeyOptions();
+
+  fkAdvancedToggle?.addEventListener('change', () => {
+    if (fkAdvancedOptions) {
+      fkAdvancedOptions.hidden = !fkAdvancedToggle.checked;
+      fkAdvancedOptions.classList.toggle('hidden', !fkAdvancedToggle.checked);
+    }
+    if (!fkAdvancedToggle.checked) {
+      setDefaultForeignKeyOptions();
+    }
+  });
 
   fkTableSelect.addEventListener('change', async () => {
     await loadColumnsIntoSelect(fkTableSelect.value, fkColumnSelect, { includeId: true });
   });
 
   fkRefTableSelect.addEventListener('change', async () => {
-    await loadColumnsIntoSelect(fkRefTableSelect.value, fkRefColumnSelect, { includeId: true });
+    await loadReferencedColumnsIntoSelect(fkRefTableSelect.value);
+    if (!fkAdvancedToggle?.checked) {
+      setDefaultForeignKeyOptions();
+    }
   });
 
   fkDeleteTableSelect.addEventListener('change', async () => {
@@ -788,6 +817,10 @@ function setupForeignKeys() {
 
   fkForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+
+    if (!fkAdvancedToggle?.checked) {
+      setDefaultForeignKeyOptions();
+    }
 
     const tableName = fkTableSelect.value;
     const payload = {
