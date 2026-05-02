@@ -1,4 +1,5 @@
 const tableModel = require('../models/dynamicTableModel');
+const JSZip = require('jszip');
 
 function withWsEvent(req, event, payload = {}) {
   if (req.app.locals.broadcast) {
@@ -6,33 +7,232 @@ function withWsEvent(req, event, payload = {}) {
   }
 }
 
-function csvEscape(value) {
-  const raw = value === null || value === undefined ? '' : String(value);
-  return `"${raw.replace(/"/g, '""')}"`;
+function getExportCellValue(row, columnName, fkDisplaysByColumn, showFkDisplay) {
+  const rawValue = row[columnName];
+  const fkDisplay = fkDisplaysByColumn[columnName];
+
+  if (showFkDisplay && fkDisplay && rawValue !== null && rawValue !== undefined) {
+    const displayValue = fkDisplay.values?.[String(rawValue)];
+    if (displayValue !== undefined && displayValue !== null) {
+      return displayValue;
+    }
+  }
+
+  return rawValue ?? '';
 }
 
-function buildCsv({ columns, rows, fkDisplaysByColumn, showFkDisplay }) {
-  const lines = [columns.map(csvEscape).join(',')];
+function buildSafeSheetName(tableName) {
+  const safeName = String(tableName || 'Datos').replace(/[\\/*?:[\]]/g, ' ').trim();
+  return (safeName || 'Datos').slice(0, 31);
+}
 
-  rows.forEach((row) => {
-    const values = columns.map((columnName) => {
-      const rawValue = row[columnName];
-      const fkDisplay = fkDisplaysByColumn[columnName];
+function buildSafeFileName(tableName, showFkDisplay) {
+  const safeTableName = String(tableName || 'tabla').replace(/[^\w.-]+/g, '_');
+  return `${safeTableName}_${showFkDisplay ? 'fk-campo' : 'fk-id'}.xlsx`;
+}
 
-      if (showFkDisplay && fkDisplay && rawValue !== null && rawValue !== undefined) {
-        const displayValue = fkDisplay.values?.[String(rawValue)];
-        if (displayValue !== undefined && displayValue !== null) {
-          return csvEscape(displayValue);
-        }
-      }
+function xmlEscape(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
 
-      return csvEscape(rawValue);
-    });
+function toExcelColumnName(index) {
+  let columnName = '';
+  let current = index;
 
-    lines.push(values.join(','));
-  });
+  while (current > 0) {
+    const remainder = (current - 1) % 26;
+    columnName = String.fromCharCode(65 + remainder) + columnName;
+    current = Math.floor((current - 1) / 26);
+  }
 
-  return `\uFEFF${lines.join('\r\n')}`;
+  return columnName;
+}
+
+function normalizeExcelValue(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().replace('T', ' ').slice(0, 19);
+  }
+
+  return value;
+}
+
+function buildCellXml(value, rowIndex, columnIndex, styleId = 0) {
+  const cellRef = `${toExcelColumnName(columnIndex)}${rowIndex}`;
+  const normalizedValue = normalizeExcelValue(value);
+  const styleAttribute = styleId ? ` s="${styleId}"` : '';
+
+  if (typeof normalizedValue === 'number' && Number.isFinite(normalizedValue)) {
+    return `<c r="${cellRef}"${styleAttribute}><v>${normalizedValue}</v></c>`;
+  }
+
+  return `<c r="${cellRef}" t="inlineStr"${styleAttribute}><is><t>${xmlEscape(normalizedValue)}</t></is></c>`;
+}
+
+function buildWorksheetRowsXml({ columns, rows, fkDisplaysByColumn, showFkDisplay }) {
+  const headerCells = columns.map((columnName, index) => buildCellXml(columnName, 1, index + 1, 1)).join('');
+  const bodyRows = rows.map((row, rowIndex) => {
+    const excelRowIndex = rowIndex + 2;
+    const cells = columns.map((columnName, columnIndex) => {
+      const value = getExportCellValue(row, columnName, fkDisplaysByColumn, showFkDisplay);
+      return buildCellXml(value, excelRowIndex, columnIndex + 1);
+    }).join('');
+
+    return `<row r="${excelRowIndex}">${cells}</row>`;
+  }).join('');
+
+  return `<row r="1">${headerCells}</row>${bodyRows}`;
+}
+
+function buildColumnWidthsXml({ columns, rows, fkDisplaysByColumn, showFkDisplay }) {
+  if (!columns.length) return '';
+
+  const columnWidths = columns.map((columnName, index) => {
+    const maxLength = rows.reduce((max, row) => {
+      const value = normalizeExcelValue(getExportCellValue(row, columnName, fkDisplaysByColumn, showFkDisplay));
+      return Math.max(max, String(value ?? '').length);
+    }, String(columnName).length);
+    const width = Math.min(Math.max(maxLength + 2, 12), 50);
+    const columnIndex = index + 1;
+
+    return `<col min="${columnIndex}" max="${columnIndex}" width="${width}" customWidth="1"/>`;
+  }).join('');
+
+  return `<cols>${columnWidths}</cols>`;
+}
+
+function buildWorksheetXml({ columns, rows, fkDisplaysByColumn, showFkDisplay }) {
+  const lastColumn = toExcelColumnName(Math.max(columns.length, 1));
+  const lastRow = Math.max(rows.length + 1, 1);
+  const dimension = `A1:${lastColumn}${lastRow}`;
+  const columnWidths = buildColumnWidthsXml({ columns, rows, fkDisplaysByColumn, showFkDisplay });
+  const sheetRows = buildWorksheetRowsXml({ columns, rows, fkDisplaysByColumn, showFkDisplay });
+  const autoFilter = columns.length ? `<autoFilter ref="A1:${lastColumn}1"/>` : '';
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <dimension ref="${dimension}"/>
+  <sheetViews>
+    <sheetView workbookViewId="0">
+      <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
+      <selection pane="bottomLeft"/>
+    </sheetView>
+  </sheetViews>
+  ${columnWidths}
+  <sheetData>${sheetRows}</sheetData>
+  ${autoFilter}
+</worksheet>`;
+}
+
+function buildContentTypesXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`;
+}
+
+function buildRootRelsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`;
+}
+
+function buildWorkbookRelsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+}
+
+function buildWorkbookXml(sheetName) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="${xmlEscape(sheetName)}" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`;
+}
+
+function buildStylesXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="2">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+  </cellXfs>
+</styleSheet>`;
+}
+
+function buildCoreXml() {
+  const now = new Date().toISOString();
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:creator>DataPilot MVC</dc:creator>
+  <cp:lastModifiedBy>DataPilot MVC</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>
+</cp:coreProperties>`;
+}
+
+function buildAppXml(sheetName) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>DataPilot MVC</Application>
+  <DocSecurity>0</DocSecurity>
+  <ScaleCrop>false</ScaleCrop>
+  <HeadingPairs>
+    <vt:vector size="2" baseType="variant">
+      <vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant>
+      <vt:variant><vt:i4>1</vt:i4></vt:variant>
+    </vt:vector>
+  </HeadingPairs>
+  <TitlesOfParts>
+    <vt:vector size="1" baseType="lpstr"><vt:lpstr>${xmlEscape(sheetName)}</vt:lpstr></vt:vector>
+  </TitlesOfParts>
+</Properties>`;
+}
+
+async function buildExcelWorkbook({ tableName, columns, rows, fkDisplaysByColumn, showFkDisplay }) {
+  const zip = new JSZip();
+  const sheetName = buildSafeSheetName(tableName);
+
+  zip.file('[Content_Types].xml', buildContentTypesXml());
+  zip.folder('_rels').file('.rels', buildRootRelsXml());
+  zip.folder('docProps').file('app.xml', buildAppXml(sheetName));
+  zip.folder('docProps').file('core.xml', buildCoreXml());
+  zip.folder('xl').file('workbook.xml', buildWorkbookXml(sheetName));
+  zip.folder('xl').file('styles.xml', buildStylesXml());
+  zip.folder('xl').folder('_rels').file('workbook.xml.rels', buildWorkbookRelsXml());
+  zip.folder('xl').folder('worksheets').file('sheet1.xml', buildWorksheetXml({
+    columns,
+    rows,
+    fkDisplaysByColumn,
+    showFkDisplay
+  }));
+
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
 async function getTables(req, res) {
@@ -115,17 +315,18 @@ async function exportRecords(req, res) {
     const records = await tableModel.getRecordsForExport(tableName, filters, {
       useFkDisplayFilters: showFkDisplay
     });
-    const csv = buildCsv({
+    const excelBuffer = await buildExcelWorkbook({
+      tableName,
       columns: records.columns,
       rows: records.data,
       fkDisplaysByColumn: records.fkDisplaysByColumn,
       showFkDisplay
     });
-    const safeFileName = `${tableName}_${showFkDisplay ? 'fk-campo' : 'fk-id'}.csv`;
+    const safeFileName = buildSafeFileName(tableName, showFkDisplay);
 
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${safeFileName}"`);
-    return res.send(csv);
+    return res.send(Buffer.from(excelBuffer));
   } catch (error) {
     return res.status(400).json({ message: error.message });
   }
