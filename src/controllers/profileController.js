@@ -50,7 +50,8 @@ async function updateProfile(req, res) {
       id: current.id,
       username,
       firstName,
-      lastName
+      lastName,
+      isAdmin: current.isAdmin
     };
 
     return res.render('profile', {

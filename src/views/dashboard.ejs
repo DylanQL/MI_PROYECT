@@ -3,6 +3,9 @@
 <header class="topbar">
   <div class="brand"><i class="bi bi-layers-half"></i> DataPilot MVC</div>
   <nav>
+    <% if (user && user.isAdmin) { %>
+      <a href="/admin" class="btn btn-ghost"><i class="bi bi-shield-lock"></i> Admin</a>
+    <% } %>
     <a href="/profile" class="btn btn-ghost"><i class="bi bi-person"></i> Perfil</a>
     <form method="POST" action="/logout" class="inline-form">
       <button class="btn btn-danger" type="submit"><i class="bi bi-box-arrow-left"></i> Salir</button>

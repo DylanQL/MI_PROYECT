@@ -1,5 +1,4 @@
 const { pool } = require('../models/db');
-const registrationModel = require('../models/registrationModel');
 
 async function ensureUsersSchema() {
   await pool.query(`
@@ -10,6 +9,7 @@ async function ensureUsersSchema() {
       nombres VARCHAR(120) NULL,
       apellidos VARCHAR(120) NULL,
       password VARCHAR(255) NOT NULL,
+      is_admin TINYINT(1) NOT NULL DEFAULT 0,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -19,6 +19,10 @@ async function ensureUsersSchema() {
 
   if (!columns.has('email')) {
     await pool.query('ALTER TABLE users ADD COLUMN email VARCHAR(255) NULL');
+  }
+
+  if (!columns.has('is_admin')) {
+    await pool.query('ALTER TABLE users ADD COLUMN is_admin TINYINT(1) NOT NULL DEFAULT 0');
   }
 
   const hasUniqueEmail = rows.some((row) => row.Field === 'email' && row.Key === 'UNI');
@@ -38,11 +42,10 @@ async function ensureUsersSchema() {
   }
 }
 
-async function ensureRegistrationSetup() {
+async function ensureAppSetup() {
   await ensureUsersSchema();
-  await registrationModel.ensureRegistrationTable();
 }
 
 module.exports = {
-  ensureRegistrationSetup
+  ensureAppSetup
 };

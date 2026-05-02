@@ -17,8 +17,13 @@ function mapUser(row) {
     email: row.email ?? '',
     firstName: row.nombres ?? row.first_name ?? row.nombre ?? '',
     lastName: row.apellidos ?? row.last_name ?? row.apellido ?? '',
-    passwordHash: row.password_hash ?? row.password ?? ''
+    passwordHash: row.password_hash ?? row.password ?? '',
+    isAdmin: Boolean(row.is_admin)
   };
+}
+
+function firstExistingColumn(columns, names) {
+  return names.find((name) => columns.has(name));
 }
 
 async function findByUsername(username) {
@@ -88,27 +93,102 @@ async function updateProfile({ id, username, firstName, lastName, passwordHash }
   await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
 }
 
-async function createOrUpdateFromRegistration({ email, username, passwordHash }) {
-  const existing = await findByEmail(email);
+async function listUsers() {
+  const [rows] = await pool.query('SELECT * FROM users ORDER BY is_admin DESC, username ASC');
 
-  if (existing) {
-    await pool.query(
-      `UPDATE users
-       SET username = ?, password = ?
-       WHERE id = ?`,
-      [username, passwordHash, existing.id]
-    );
+  return rows.map(mapUser);
+}
 
-    return { id: existing.id, isNew: false };
+async function createUser({ email, username, firstName, lastName, passwordHash, isAdmin }) {
+  const columns = await getUserColumns();
+  const firstNameColumn = firstExistingColumn(columns, ['nombres', 'first_name', 'nombre']);
+  const lastNameColumn = firstExistingColumn(columns, ['apellidos', 'last_name', 'apellido']);
+  const passwordColumn = firstExistingColumn(columns, ['password', 'password_hash']);
+
+  if (!passwordColumn) {
+    throw new Error('La tabla users no tiene columna password o password_hash.');
   }
 
+  const insertColumns = ['username', passwordColumn, 'is_admin'];
+  const values = [username, passwordHash, isAdmin ? 1 : 0];
+
+  if (columns.has('email')) {
+    insertColumns.push('email');
+    values.push(email || null);
+  }
+
+  if (firstNameColumn) {
+    insertColumns.push(firstNameColumn);
+    values.push(firstName || null);
+  }
+
+  if (lastNameColumn) {
+    insertColumns.push(lastNameColumn);
+    values.push(lastName || null);
+  }
+
+  const placeholders = insertColumns.map(() => '?').join(', ');
   const [result] = await pool.query(
-    `INSERT INTO users (email, username, password)
-     VALUES (?, ?, ?)`,
-    [email, username, passwordHash]
+    `INSERT INTO users (${insertColumns.join(', ')}) VALUES (${placeholders})`,
+    values
   );
 
-  return { id: result.insertId, isNew: true };
+  return findById(result.insertId);
+}
+
+async function updateUser({ id, email, username, firstName, lastName, passwordHash, isAdmin }) {
+  const columns = await getUserColumns();
+  const updates = ['username = ?', 'is_admin = ?'];
+  const values = [username, isAdmin ? 1 : 0];
+
+  if (columns.has('email')) {
+    updates.push('email = ?');
+    values.push(email || null);
+  }
+
+  const firstNameColumn = firstExistingColumn(columns, ['nombres', 'first_name', 'nombre']);
+  if (firstNameColumn) {
+    updates.push(`${firstNameColumn} = ?`);
+    values.push(firstName || null);
+  }
+
+  const lastNameColumn = firstExistingColumn(columns, ['apellidos', 'last_name', 'apellido']);
+  if (lastNameColumn) {
+    updates.push(`${lastNameColumn} = ?`);
+    values.push(lastName || null);
+  }
+
+  if (passwordHash) {
+    const passwordColumn = firstExistingColumn(columns, ['password', 'password_hash']);
+    if (!passwordColumn) {
+      throw new Error('La tabla users no tiene columna password o password_hash.');
+    }
+
+    updates.push(`${passwordColumn} = ?`);
+    values.push(passwordHash);
+  }
+
+  values.push(id);
+
+  await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+  return findById(id);
+}
+
+async function deleteUser(id) {
+  await pool.query('DELETE FROM users WHERE id = ?', [id]);
+}
+
+async function countAdminsExcept(id) {
+  const [rows] = await pool.query(
+    'SELECT COUNT(*) AS total FROM users WHERE is_admin = 1 AND id <> ?',
+    [id]
+  );
+  return Number(rows[0]?.total || 0);
+}
+
+async function countAdmins() {
+  const [rows] = await pool.query('SELECT COUNT(*) AS total FROM users WHERE is_admin = 1');
+  return Number(rows[0]?.total || 0);
 }
 
 module.exports = {
@@ -116,5 +196,10 @@ module.exports = {
   findById,
   findByEmail,
   updateProfile,
-  createOrUpdateFromRegistration
+  listUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+  countAdminsExcept,
+  countAdmins
 };

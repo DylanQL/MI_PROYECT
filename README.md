@@ -5,7 +5,7 @@ Aplicacion MVC con Node.js, Express, MySQL y WebSocket para gestionar tablas y r
 ## Funciones incluidas
 
 - Login (sin registro publico)
-- Registro por correo corporativo con codigo de verificacion
+- Panel administrador en `/admin` para crear, editar y eliminar cuentas
 - Edicion de perfil: username, nombres, apellidos y contrasena
 - Menu principal con:
   - Seleccionar tabla
@@ -20,7 +20,8 @@ Aplicacion MVC con Node.js, Express, MySQL y WebSocket para gestionar tablas y r
 
 ## Seguridad aplicada
 
-- Se bloquea la tabla `users` y la tabla de sesiones `app_sessions` para que no aparezcan ni se puedan manipular desde la app.
+- Se bloquea la tabla `users` y la tabla de sesiones `app_sessions` para que no aparezcan ni se puedan manipular desde el dashboard.
+- Solo usuarios con `is_admin = 1` pueden acceder al panel `/admin`.
 - Validacion de identificadores SQL para reducir riesgo de inyeccion.
 
 ## Requisitos
@@ -41,9 +42,6 @@ Variables:
 - `MYSQL_ADDON_PASSWORD`
 - `SESSION_SECRET`
 - `PORT`
-- `GMAIL_SENDER_EMAIL`
-- `GMAIL_APP_PASSWORD`
-- `REGISTER_ALLOWED_DOMAIN`
 
 ## Instalacion y ejecucion
 
@@ -69,11 +67,13 @@ CREATE TABLE users (
   username VARCHAR(100) NOT NULL UNIQUE,
   nombres VARCHAR(120) NULL,
   apellidos VARCHAR(120) NULL,
-  password VARCHAR(255) NOT NULL
+  password VARCHAR(255) NOT NULL,
+  is_admin TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-Para insertar un usuario con contrasena hasheada, genera hash bcrypt y guardalo en `password`.
+Para insertar el primer administrador, genera un hash bcrypt y guardalo en `password`.
 
 Ejemplo rapido de hash:
 
@@ -81,31 +81,27 @@ Ejemplo rapido de hash:
 node -e "require('bcrypt').hash('TuPasswordSegura', 10).then(console.log)"
 ```
 
-Luego inserta el hash en tu tabla `users`.
+Luego inserta el hash en tu tabla `users`:
 
-## Registro por correo
+```sql
+INSERT INTO users (email, username, nombres, apellidos, password, is_admin)
+VALUES ('admin@empresa.com', 'admin', 'Admin', 'Principal', 'HASH_BCRYPT_AQUI', 1);
+```
 
-Flujo implementado:
-
-1. El usuario abre `/register` e ingresa su correo.
-2. Solo se permite continuar si el dominio coincide con `REGISTER_ALLOWED_DOMAIN` (por defecto `scania.com`).
-3. Al pasar a la siguiente pantalla se muestran dos botones:
-  - Enviar codigo
-  - Ya tengo un codigo
-4. El codigo expira en 5 minutos.
-5. No se puede reenviar codigo antes de 1 minuto (se muestra contador y boton desactivado).
-6. Al verificar codigo valido, el sistema genera una contrasena aleatoria, crea o actualiza usuario y envia la contrasena al correo.
+Desde esa cuenta entra a `/admin` y crea las demas cuentas de acceso a la plataforma.
 
 ## Rutas principales
 
 - `GET /login`
 - `POST /login`
-- `GET /register`
-- `POST /register/status`
-- `POST /register/send-code`
-- `POST /register/verify-code`
+- `GET /admin` (login y panel administrador)
+- `POST /admin/login`
 - `POST /logout`
 - `GET /` (dashboard)
+- `POST /admin/users`
+- `GET /admin/users/:id/edit`
+- `POST /admin/users/:id`
+- `POST /admin/users/:id/delete`
 - `GET /profile`
 - `POST /profile`
 

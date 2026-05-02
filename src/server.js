@@ -9,8 +9,9 @@ const path = require('path');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const { sessionStore, pool } = require('./models/db');
-const { ensureRegistrationSetup } = require('./services/bootstrap');
+const { ensureAppSetup } = require('./services/bootstrap');
 const authRoutes = require('./routes/authRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const viewRoutes = require('./routes/viewRoutes');
 const tableRoutes = require('./routes/tableRoutes');
@@ -46,6 +47,7 @@ app.use(sessionParser);
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.use(authRoutes);
+app.use(adminRoutes);
 app.use(profileRoutes);
 app.use(viewRoutes);
 app.use('/api', tableRoutes);
@@ -103,7 +105,7 @@ wss.on('connection', (ws) => {
 async function start() {
   try {
     await pool.query('SELECT 1');
-    await ensureRegistrationSetup();
+    await ensureAppSetup();
     const port = Number(process.env.PORT || 3000);
 
     server.listen(port, () => {

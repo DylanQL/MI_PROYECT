@@ -1,21 +1,21 @@
-<%- include('partials/head', { title: 'Login | DataPilot MVC' }) %>
+<%- include('partials/head', { title: isAdminLogin ? 'Admin | DataPilot MVC' : 'Login | DataPilot MVC' }) %>
 
 <main class="auth-shell">
   <section class="auth-card glass">
     <div class="auth-brand">
       <i class="bi bi-database-check"></i>
-      <h1>DataPilot MVC</h1>
-      <p>Gestiona tus tablas MySQL con WebSocket en tiempo real</p>
+      <h1><%= isAdminLogin ? 'Panel administrador' : 'DataPilot MVC' %></h1>
+      <p><%= isAdminLogin ? 'Acceso exclusivo para gestionar cuentas de la plataforma' : 'Gestiona tus tablas MySQL con WebSocket en tiempo real' %></p>
     </div>
 
     <% if (error) { %>
       <div class="alert error"><i class="bi bi-exclamation-octagon"></i> <%= error %></div>
     <% } %>
 
-    <form method="POST" action="/login" class="auth-form">
+    <form method="POST" action="<%= formAction || '/login' %>" class="auth-form">
       <label>
         Usuario o correo
-        <input type="text" name="username" placeholder="usuario o correo@scania.com" required />
+        <input type="text" name="username" placeholder="usuario o correo" required />
       </label>
       <label>
         Contrasena
@@ -25,10 +25,6 @@
         <i class="bi bi-box-arrow-in-right"></i>
         Ingresar
       </button>
-      <a href="/register" class="btn btn-ghost">
-        <i class="bi bi-envelope-plus"></i>
-        Registrarme con correo
-      </a>
     </form>
   </section>
 </main>

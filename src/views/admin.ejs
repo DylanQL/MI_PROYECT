@@ -1,0 +1,114 @@
+<%- include('partials/head', { title: 'Admin | DataPilot MVC' }) %>
+
+<header class="topbar">
+  <div class="brand"><i class="bi bi-shield-lock"></i> Panel administrador</div>
+  <nav>
+    <a href="/" class="btn btn-ghost"><i class="bi bi-grid"></i> Dashboard</a>
+    <a href="/profile" class="btn btn-ghost"><i class="bi bi-person"></i> Perfil</a>
+    <form method="POST" action="/logout" class="inline-form">
+      <button class="btn btn-danger" type="submit"><i class="bi bi-box-arrow-left"></i> Salir</button>
+    </form>
+  </nav>
+</header>
+
+<main class="container admin-container">
+  <section class="panel">
+    <h2>
+      <i class="bi <%= editingUser ? 'bi-person-gear' : 'bi-person-plus' %>"></i>
+      <%= editingUser ? 'Editar cuenta' : 'Crear cuenta' %>
+    </h2>
+
+    <% if (error) { %>
+      <div class="alert error"><i class="bi bi-exclamation-octagon"></i> <%= error %></div>
+    <% } %>
+    <% if (success) { %>
+      <div class="alert success"><i class="bi bi-check-circle"></i> <%= success %></div>
+    <% } %>
+
+    <form method="POST" action="<%= editingUser ? `/admin/users/${editingUser.id}` : '/admin/users' %>" class="grid-form">
+      <label>
+        Usuario
+        <input type="text" name="username" value="<%= editingUser ? editingUser.username : '' %>" required />
+      </label>
+      <label>
+        Correo
+        <input type="email" name="email" value="<%= editingUser ? editingUser.email : '' %>" />
+      </label>
+      <label>
+        Nombres
+        <input type="text" name="firstName" value="<%= editingUser ? editingUser.firstName : '' %>" />
+      </label>
+      <label>
+        Apellidos
+        <input type="text" name="lastName" value="<%= editingUser ? editingUser.lastName : '' %>" />
+      </label>
+      <label>
+        <%= editingUser ? 'Nueva contrasena (opcional)' : 'Contrasena' %>
+        <input type="password" name="password" <%= editingUser ? '' : 'required' %> />
+      </label>
+      <label class="check-label admin-check">
+        <input type="checkbox" name="isAdmin" <%= editingUser && editingUser.isAdmin ? 'checked' : '' %> />
+        Administrador
+      </label>
+      <div class="toolbar-actions">
+        <button class="btn btn-primary" type="submit">
+          <i class="bi bi-floppy"></i>
+          <%= editingUser ? 'Guardar cambios' : 'Crear cuenta' %>
+        </button>
+        <% if (editingUser) { %>
+          <a href="/admin" class="btn btn-ghost"><i class="bi bi-x-circle"></i> Cancelar</a>
+        <% } %>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="section-title">
+      <h2><i class="bi bi-people"></i> Cuentas</h2>
+      <span class="badge"><%= users.length %> usuarios</span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Usuario</th>
+            <th>Nombre</th>
+            <th>Correo</th>
+            <th>Rol</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% users.forEach((account) => { %>
+            <tr>
+              <td><strong><%= account.username %></strong></td>
+              <td><%= [account.firstName, account.lastName].filter(Boolean).join(' ') || '-' %></td>
+              <td><%= account.email || '-' %></td>
+              <td>
+                <span class="role-pill <%= account.isAdmin ? 'admin' : '' %>">
+                  <i class="bi <%= account.isAdmin ? 'bi-shield-lock' : 'bi-person' %>"></i>
+                  <%= account.isAdmin ? 'Admin' : 'Usuario' %>
+                </span>
+              </td>
+              <td>
+                <div class="toolbar-actions">
+                  <a href="/admin/users/<%= account.id %>/edit" class="btn btn-ghost btn-sm">
+                    <i class="bi bi-pencil-square"></i> Editar
+                  </a>
+                  <form method="POST" action="/admin/users/<%= account.id %>/delete" class="inline-form">
+                    <button class="btn btn-danger btn-sm" type="submit" <%= user.id === account.id ? 'disabled' : '' %>>
+                      <i class="bi bi-trash3"></i> Eliminar
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<%- include('partials/footer') %>

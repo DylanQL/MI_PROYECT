@@ -1,4 +1,4 @@
-const RESERVED_TABLES = new Set(['users', 'app_sessions', 'registration_codes']);
+const RESERVED_TABLES = new Set(['users', 'app_sessions']);
 
 function isValidIdentifier(value) {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
